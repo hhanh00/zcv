@@ -1,0 +1,8 @@
+display_name: zcv
+
+icon: misc/icon.png
+
+metainfo: linux/packaging/appdata.xml
+
+categories:
+  - Utility
