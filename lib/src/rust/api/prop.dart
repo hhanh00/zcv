@@ -6,5 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-String greet({required String name}) =>
-    RustLib.instance.api.crateApiSimpleGreet(name: name);
+// These functions are ignored because they are not marked as `pub`: `put_prop_impl`
+
+Future<void> putProp({required String key, required String value}) =>
+    RustLib.instance.api.crateApiPropPutProp(key: key, value: value);
