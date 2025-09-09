@@ -1,0 +1,46 @@
+[workspace]
+members = [
+    "rust",
+    "zcvlib"
+]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1.0.99"
+env_logger = "0.11.8"
+flutter_rust_bridge = "=2.11.1"
+hex = "0.4.3"
+log = "0.4.28"
+serde = "1.0.219"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "macros", "sqlite"] }
+thiserror = "2.0.16"
+tokio = "1.47.1"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = [
+    "env-filter",
+    "fmt",
+    "json"
+] }
+orchard = "0.11"
+zcash_address = "0.9"
+zcash_encoding = "0.3"
+zcash_keys = { version = "0.10", features = ["orchard"] }
+zcash_note_encryption = "0.4"
+zcash_primitives = "0.24"
+zcash_proofs = { version = "0.24", features = ["bundled-prover"] }
+zcash_protocol = { version = "0.6", features = ["local-consensus"] }
+tonic = { version = "0.14.2", features = ["tls-webpki-roots", "tls-ring"] }
+prost = "0.14.1"
+tonic-prost = "0.14.2"
+rustls = "0.23.31"
+
+[patch.crates-io]
+orchard = { git = "https://github.com/hhanh00/orchard.git", rev = "75448e671f56f7c6d3f29502f5a26370a056b86c" }
+sapling-crypto = { git = "https://github.com/zcash/sapling-crypto.git", rev = "6a8282be0959b410a0b622cd5eb84f8c3c134078" }
+zcash_address = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }
+zcash_encoding = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }
+zcash_keys = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }
+zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption.git", rev = "ede44ea608e667c78309c598fbf4d70f69c15c29" }
+zcash_primitives = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }
+zcash_proofs = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }
+zcash_protocol = { git = "https://github.com/zcash/librustzcash.git", rev = "5fe0e5234d6e8d0cee38ccc0dff6f32135aabedd" }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:zcv/src/rust/api/rpc.dart';
-import 'package:zcv/store.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

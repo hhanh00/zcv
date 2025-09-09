@@ -1,0 +1,5 @@
+[package]
+edition = "2021"
+name = "zcvlib"
+version = "0.1.0"
+
