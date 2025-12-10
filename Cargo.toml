@@ -1,0 +1,10 @@
+[workspace]
+members = ["zcvlib"]
+exclude = ["orchard"]
+resolver = "2"
+
+[workspace.dependencies]
+orchard = {git = "https://github.com/hhanh00/orchard.git", features=["vote"], rev="6fdb139ac117eb8854b3bfef9a89de57d54fbac5"}
+
+#[patch.crates-io]
+#orchard = {path = "./orchard"}
