@@ -1,7 +1,14 @@
-[package]
-name = "zcvlib"
-version = "0.1.0"
-edition = "2024"
-
 [dependencies]
 orchard = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bip39 = { workspace = true }
+bech32 = { workspace = true }
+zcash_protocol = { workspace = true }
+
+[package]
+edition = "2024"
+name = "zcvlib"
+version = "0.1.0"
