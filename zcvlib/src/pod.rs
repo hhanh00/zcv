@@ -38,7 +38,6 @@ pub struct ElectionPropsPub {
 
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct QuestionPropPub {
-    pub domain: String,
     pub title: String,
     pub subtitle: String,
     pub answers: Vec<AnswerPub>,
@@ -46,6 +45,10 @@ pub struct QuestionPropPub {
 
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct QuestionPropHashable {
+    pub start: u32,
+    pub end: u32,
+    pub need_sig: bool,
+    pub name: String,
     pub title: String,
     pub subtitle: String,
     pub answers: Vec<AnswerPub>,
@@ -75,8 +78,13 @@ impl ElectionProps {
             .into_iter()
             .enumerate()
             .map(move |(iq, q)| {
-                let answers = q
-                    .answers
+                let QuestionProp {
+                    title,
+                    subtitle,
+                    answers,
+                } = q;
+
+                let answers = answers
                     .into_iter()
                     .enumerate()
                     .map(move |(ia, a)| {
@@ -95,30 +103,13 @@ impl ElectionProps {
                         address.map(|address| AnswerPub { value: a, address })
                     })
                     .collect::<anyhow::Result<Vec<_>>>();
-                answers.and_then(|answers| {
-                    let q = QuestionPropHashable {
-                        title: q.title,
-                        subtitle: q.subtitle,
-                        answers,
-                    };
-                    let d = bincode::encode_to_vec(&q, bincode::config::standard());
-                    let domain = d
-                        .map(|d| calculate_domain(&d))
-                        .map(|d| hex::encode(d.to_repr()));
-                    let QuestionPropHashable {
+                answers
+                    .map(|answers| QuestionPropPub {
                         title,
                         subtitle,
                         answers,
-                    } = q;
-                    domain
-                        .map(|domain| QuestionPropPub {
-                            domain,
-                            title,
-                            subtitle,
-                            answers,
-                        })
-                        .anyhow()
-                })
+                    })
+                    .anyhow()
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -129,6 +120,27 @@ impl ElectionProps {
             name,
             questions,
         })
+    }
+}
+
+impl QuestionPropHashable {
+    pub fn for_question(election: &ElectionPropsPub, index: usize) -> Self {
+        let q = &election.questions[index];
+        QuestionPropHashable {
+            start: election.start,
+            end: election.end,
+            need_sig: election.need_sig,
+            name: election.name.clone(),
+            title: q.title.clone(),
+            subtitle: q.subtitle.clone(),
+            answers: q.answers.clone(),
+        }
+    }
+
+    pub fn calculate_domain(&self) -> ZCVResult<[u8; 32]> {
+        let m = bincode::encode_to_vec(self, bincode::config::standard()).anyhow()?;
+        let d = calculate_domain(&m).to_repr();
+        Ok(d)
     }
 }
 
@@ -168,5 +180,9 @@ mod tests {
         println!("{e:?}");
         let epub = e.build().unwrap();
         println!("{epub:?}");
+
+        let hash = super::QuestionPropHashable::for_question(&epub, 1).calculate_domain().unwrap();
+        println!("{}", hex::encode(hash));
+        assert_eq!(hash, *hex::decode("5e7c105f1dc89bc582f53cb1b1ab8e46170562af4061a68a67cf9f474a5c623b").unwrap());
     }
 }
