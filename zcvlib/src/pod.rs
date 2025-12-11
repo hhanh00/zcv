@@ -1,9 +1,10 @@
-use bech32::Hrp;
+use bech32::{Bech32m, Hrp};
+use bincode::Encode;
 use bip39::Mnemonic;
+use ff::PrimeField;
 use orchard::{
-    Address,
-    keys::{FullViewingKey, Scope, SpendingKey},
-    vote::derive_question_sk,
+    keys::{FullViewingKey, Scope},
+    vote::{calculate_domain, derive_question_sk},
 };
 use serde::{Deserialize, Serialize};
 
@@ -26,9 +27,8 @@ pub struct QuestionProp {
     pub answers: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct ElectionPropsPub {
-    pub id: String,
     pub start: u32,
     pub end: u32,
     pub need_sig: bool,
@@ -36,14 +36,22 @@ pub struct ElectionPropsPub {
     pub questions: Vec<QuestionPropPub>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct QuestionPropPub {
+    pub domain: String,
     pub title: String,
     pub subtitle: String,
     pub answers: Vec<AnswerPub>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
+pub struct QuestionPropHashable {
+    pub title: String,
+    pub subtitle: String,
+    pub answers: Vec<AnswerPub>,
+}
+
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct AnswerPub {
     pub value: String,
     pub address: String,
@@ -63,20 +71,64 @@ impl ElectionProps {
 
         let m = Mnemonic::parse(&secret_seed).anyhow()?;
         let s = m.to_seed("ZCVote");
-        let r = questions.into_iter().enumerate().map(move |(iq, q)| {
-            q.answers.into_iter().enumerate().map(move |(ia, a)| {
-                let sk =
-                    derive_question_sk(&s, zcash_protocol::constants::mainnet::COIN_TYPE, iq, ia)
+        let questions = questions
+            .into_iter()
+            .enumerate()
+            .map(move |(iq, q)| {
+                let answers = q
+                    .answers
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(ia, a)| {
+                        let sk = derive_question_sk(
+                            &s,
+                            zcash_protocol::constants::mainnet::COIN_TYPE,
+                            iq,
+                            ia,
+                        )
                         .anyhow();
-                let vk = sk.map(|sk| FullViewingKey::from(&sk));
-                let address = vk.map(|vk| vk.address_at(0u64, Scope::External));
-                let address = address.map(|address|
-                    bech32::encode(hrp, &address.to_raw_address_bytes()));
-                AnswerPub { value: a, address }
+                        let vk = sk.map(|sk| FullViewingKey::from(&sk));
+                        let address = vk.map(|vk| vk.address_at(0u64, Scope::External));
+                        let address = address.and_then(|address| {
+                            bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()
+                        });
+                        address.map(|address| AnswerPub { value: a, address })
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>();
+                answers.and_then(|answers| {
+                    let q = QuestionPropHashable {
+                        title: q.title,
+                        subtitle: q.subtitle,
+                        answers,
+                    };
+                    let d = bincode::encode_to_vec(&q, bincode::config::standard());
+                    let domain = d
+                        .map(|d| calculate_domain(&d))
+                        .map(|d| hex::encode(d.to_repr()));
+                    let QuestionPropHashable {
+                        title,
+                        subtitle,
+                        answers,
+                    } = q;
+                    domain
+                        .map(|domain| QuestionPropPub {
+                            domain,
+                            title,
+                            subtitle,
+                            answers,
+                        })
+                        .anyhow()
+                })
             })
-            .collect::<anyhow::Result<Vec<_>>>()
-        }).collect::<anyhow::Result<Vec<_>>>()?;
-        todo!()
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        Ok(ElectionPropsPub {
+            start,
+            end,
+            need_sig,
+            name,
+            questions,
+        })
     }
 }
 
@@ -114,5 +166,7 @@ mod tests {
         });
         let e: ElectionProps = serde_json::from_value(e).unwrap();
         println!("{e:?}");
+        let epub = e.build().unwrap();
+        println!("{epub:?}");
     }
 }
