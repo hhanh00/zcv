@@ -4,6 +4,8 @@ use anyhow::Error as AnyError;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
+    SQLite(#[from] sqlx::Error),
+    #[error(transparent)]
     Any(#[from] anyhow::Error),
 }
 
