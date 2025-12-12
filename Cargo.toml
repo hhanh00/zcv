@@ -54,7 +54,8 @@ version = "0.8.6"
 [workspace.dependencies.tokio]
 features = [
     "rt-multi-thread",
-    "tokio-macros",
+    "macros",
+
 ]
 version = "1.48"
 

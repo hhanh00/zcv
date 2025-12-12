@@ -11,6 +11,7 @@ ff = { workspace = true }
 hex = { workspace = true }
 zcash_protocol = { workspace = true }
 sqlx = { workspace = true }
+tokio = { workspace = true }
 
 [package]
 edition = "2024"

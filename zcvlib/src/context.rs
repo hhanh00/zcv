@@ -1,6 +1,6 @@
-use sqlx::{ConnectOptions, Sqlite, SqliteConnection, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
+use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
 
-use crate::{ZCVResult, error::IntoAnyhow};
+use crate::ZCVResult;
 
 pub struct Context {
     pub pool: SqlitePool,
