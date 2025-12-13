@@ -19,6 +19,7 @@ halo2_proofs = "0.3"
 incrementalmerkletree = "0.8"
 log = "0.4"
 pasta_curves = "0.5"
+tonic-prost = "0.14"
 prost = "0.14"
 rand = "0.9"
 rand_core = "0.9"
@@ -29,6 +30,7 @@ tracing = "0"
 zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
+tonic-prost-build = "0.14"
 
 [workspace.dependencies.hex]
 features = ["serde"]
@@ -40,7 +42,7 @@ version = "0.11"
 
 [workspace.dependencies.serde]
 features = ["derive"]
-version = "1.0.228"
+version = "1.0"
 
 [workspace.dependencies.sqlx]
 features = [
@@ -49,7 +51,7 @@ features = [
     "macros",
     "migrate",
 ]
-version = "0.8.6"
+version = "0.8"
 
 [workspace.dependencies.tokio]
 features = [
@@ -61,7 +63,8 @@ version = "1.48"
 
 [workspace.dependencies.tonic]
 features = [
-    "tls",
-    "tls-roots",
+    "tls-ring",
+    "tls-webpki-roots",
 ]
-version = "0.14.2"
+version = "0.14"
+
