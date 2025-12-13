@@ -4,7 +4,9 @@ use anyhow::Error as AnyError;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Tonic(#[from] tonic::transport::Error),
+    Tonic(#[from] tonic::Status),
+    #[error(transparent)]
+    TonicTransport(#[from] tonic::transport::Error),
     #[error(transparent)]
     SQLite(#[from] sqlx::Error),
     #[error(transparent)]
