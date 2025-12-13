@@ -12,6 +12,12 @@ hex = { workspace = true }
 zcash_protocol = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
 
 [package]
 edition = "2024"
