@@ -3052,6 +3052,7 @@ dependencies = [
  "ff",
  "hex",
  "orchard",
+ "pasta_curves",
  "prost",
  "serde",
  "serde_json",
@@ -3061,7 +3062,9 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "zcash_note_encryption",
  "zcash_protocol",
+ "zip32",
 ]
 
 [[package]]

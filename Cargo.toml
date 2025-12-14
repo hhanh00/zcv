@@ -30,6 +30,7 @@ tracing = "0"
 zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
+zip32 = "0.2"
 tonic-prost-build = "0.14"
 
 [workspace.dependencies.hex]
