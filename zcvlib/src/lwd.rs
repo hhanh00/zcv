@@ -1,11 +1,24 @@
 use crate::{
     ZCVResult,
-    rpc::{BlockId, BlockRange, PoolType, compact_tx_streamer_client::CompactTxStreamerClient},
+    db::get_ivks,
+    rpc::{
+        BlockId, BlockRange, CompactOrchardAction, PoolType,
+        compact_tx_streamer_client::CompactTxStreamerClient,
+    },
+    tiu,
 };
+use orchard::{
+    keys::PreparedIncomingViewingKey,
+    note::{ExtractedNoteCommitment, Nullifier},
+    note_encryption::{CompactAction, OrchardDomain},
+};
+use sqlx::SqliteConnection;
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
 };
+use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
+use zcash_protocol::consensus::Network;
 
 pub type Client = CompactTxStreamerClient<Channel>;
 
@@ -15,22 +28,62 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
-pub async fn get_blocks(client: &mut Client, start: u32, end: u32) -> ZCVResult<()> {
-    let mut blocks = client.get_block_range(Request::new(BlockRange {
-        start: Some(BlockId {
-            height: (start + 1) as u64,
-            hash: vec![],
-        }),
-        end: Some(BlockId {
-            height: end as u64,
-            hash: vec![],
-        }),
-        pool_types: vec![PoolType::Orchard.into()],
-    })).await?.into_inner();
+pub async fn scan_blocks(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    client: &mut Client,
+    id_election: u32,
+    start: u32,
+    end: u32,
+) -> ZCVResult<()> {
+    let (eivk, iivk) = get_ivks(network, conn).await?;
+    let ivks = [
+        (0, PreparedIncomingViewingKey::new(&eivk)),
+        (1, PreparedIncomingViewingKey::new(&iivk)),
+    ];
+
+    let mut blocks = client
+        .get_block_range(Request::new(BlockRange {
+            start: Some(BlockId {
+                height: (start + 1) as u64,
+                hash: vec![],
+            }),
+            end: Some(BlockId {
+                height: end as u64,
+                hash: vec![],
+            }),
+            pool_types: vec![PoolType::Orchard.into()],
+        }))
+        .await?
+        .into_inner();
 
     while let Some(block) = blocks.message().await? {
+        let height = block.height as u32;
         for tx in block.vtx {
-            println!("{}", tx.actions.len());
+            for a in tx.actions {
+                let CompactOrchardAction {
+                    nullifier,
+                    cmx,
+                    ephemeral_key,
+                    ciphertext,
+                } = a;
+
+                let act = CompactAction::from_parts(
+                    Nullifier::from_bytes(&tiu!(nullifier)).unwrap(),
+                    ExtractedNoteCommitment::from_bytes(&tiu!(cmx)).unwrap(),
+                    EphemeralKeyBytes(tiu!(ephemeral_key)),
+                    tiu!(ciphertext),
+                );
+
+                let domain = OrchardDomain::for_compact_action(&act);
+                for (scope, pivk) in ivks.iter() {
+                    if let Some((note, address)) = try_compact_note_decryption(&domain, pivk, &act)
+                    {
+                        println!("Found note at {} for {} zats", height, note.value().inner());
+                        // TODO: store_received_note(conn, &note, &address, scope).await?;
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -38,13 +91,38 @@ pub async fn get_blocks(client: &mut Client, start: u32, end: u32) -> ZCVResult<
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        context::Context,
+        db::{create_schema, set_account_seed},
+        lwd::{connect, scan_blocks},
+    };
     use anyhow::Result;
-    use crate::lwd::{connect, get_blocks};
+    use sqlx::{Sqlite, pool::PoolConnection};
+    use zcash_protocol::consensus::Network;
+
+    pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
+
+    async fn setup() -> Result<PoolConnection<Sqlite>> {
+        let ctx = Context::new("vote.db", "").await?;
+        let mut conn = ctx.connect().await?;
+        create_schema(&mut conn).await?;
+        set_account_seed(&mut conn, TEST_SEED, 0).await?;
+        Ok(conn)
+    }
 
     #[tokio::test]
-    async fn test_get_blocks() -> Result<()> {
+    async fn test_scan_blocks() -> Result<()> {
+        let mut conn = setup().await?;
         let mut client = connect("https://zec.rocks").await?;
-        get_blocks(&mut client, 3_140_000, 3_160_000).await?;
+        scan_blocks(
+            &Network::MainNetwork,
+            &mut conn,
+            &mut client,
+            1,
+            3_168_000,
+            3_169_000,
+        )
+        .await?;
         Ok(())
     }
 }

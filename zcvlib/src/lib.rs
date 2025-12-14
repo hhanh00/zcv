@@ -9,3 +9,10 @@ pub mod rpc;
 // or tonic::include_proto!("cash.z.wallet.sdk.rpc");
 
 pub use error::ZCVResult;
+
+#[macro_export]
+macro_rules! tiu {
+    ($x: expr) => {
+        $x.try_into().unwrap()
+    };
+}
