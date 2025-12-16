@@ -36,7 +36,11 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         id_question INTEGER PRIMARY KEY,
         election INTEGER NOT NULL,
         idx INTEGER NOT NULL,
-        data BLOB NOT NULL)",
+        domain BLOB NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT NOT NULL,
+        data BLOB NOT NULL,
+        UNIQUE (election, idx))",
     )
     .execute(&mut *conn)
     .await?;
