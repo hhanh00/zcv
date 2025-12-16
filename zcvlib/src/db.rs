@@ -103,7 +103,7 @@ pub async fn set_account_seed(
 pub async fn get_ivks(
     network: &Network,
     conn: &mut SqliteConnection,
-) -> ZCVResult<(IncomingViewingKey, IncomingViewingKey)> {
+) -> ZCVResult<(FullViewingKey, IncomingViewingKey, IncomingViewingKey)> {
     let (seed, aindex): (String, u32) =
         query_as("SELECT seed, aindex FROM account WHERE id_account = 0")
             .fetch_one(conn)
@@ -111,7 +111,7 @@ pub async fn get_ivks(
     let spk = derive_spending_key(network, seed, aindex)?;
     let fvk = FullViewingKey::from(&spk);
     let ivks = (fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal));
-    Ok(ivks)
+    Ok((fvk, ivks.0, ivks.1))
 }
 
 fn derive_spending_key(network: &Network, seed: String, aindex: u32) -> ZCVResult<SpendingKey> {

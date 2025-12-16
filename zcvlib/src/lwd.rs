@@ -1,18 +1,20 @@
 use crate::{
     ZCVResult,
-    db::get_ivks,
+    db::{get_ivks, store_received_note},
     rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
     },
     tiu,
 };
+use ff::PrimeField;
 use orchard::{
     keys::PreparedIncomingViewingKey,
     note::{ExtractedNoteCommitment, Nullifier},
     note_encryption::{CompactAction, OrchardDomain},
 };
-use sqlx::SqliteConnection;
+use pasta_curves::Fp;
+use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
@@ -36,7 +38,20 @@ pub async fn scan_blocks(
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
-    let (eivk, iivk) = get_ivks(network, conn).await?;
+    let domains = query(
+        "SELECT id_question, domain FROM questions
+        WHERE election = ?1 ORDER BY idx",
+    )
+    .bind(id_election)
+    .map(|r: SqliteRow| {
+        let idx: u32 = r.get(0);
+        let d: Vec<u8> = r.get(1);
+        let domain = Fp::from_repr(tiu!(d)).unwrap();
+        (idx, domain)
+    })
+    .fetch_all(&mut *conn)
+    .await?;
+    let (fvk, eivk, iivk) = get_ivks(network, conn).await?;
     let ivks = [
         (0, PreparedIncomingViewingKey::new(&eivk)),
         (1, PreparedIncomingViewingKey::new(&iivk)),
@@ -56,6 +71,8 @@ pub async fn scan_blocks(
         }))
         .await?
         .into_inner();
+
+    let mut position = 0u32;
 
     while let Some(block) = blocks.message().await? {
         let height = block.height as u32;
@@ -80,9 +97,25 @@ pub async fn scan_blocks(
                     if let Some((note, address)) = try_compact_note_decryption(&domain, pivk, &act)
                     {
                         println!("Found note at {} for {} zats", height, note.value().inner());
-                        // TODO: store_received_note(conn, &note, &address, scope).await?;
+
+                        for (id_question, domain) in domains.iter() {
+                            store_received_note(
+                                conn,
+                                *domain,
+                                &fvk,
+                                &note,
+                                &address,
+                                true,
+                                height,
+                                position,
+                                *id_question,
+                                *scope,
+                            )
+                            .await?;
+                        }
                     }
                 }
+                position += 1;
             }
         }
     }
