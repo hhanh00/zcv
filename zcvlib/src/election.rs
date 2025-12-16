@@ -9,14 +9,16 @@ use crate::{
 impl ElectionPropsPub {
     pub async fn store(&self, conn: &mut SqliteConnection) -> ZCVResult<()> {
         let hash = self.hash()?;
+        let json = serde_json::to_string(self).anyhow()?;
         let (election,): (u32,) = query_as(
             "INSERT INTO elections
-            (hash, start, end, need_sig, name)
-            VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            (hash, start, end, need_sig, name, data)
+            VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
             start = excluded.start,
             end = excluded.end,
             need_sig = excluded.need_sig,
-            name = excluded.name
+            name = excluded.name,
+            data = excluded.data
             RETURNING id_election",
         )
         .bind(hash.as_slice())
@@ -24,6 +26,7 @@ impl ElectionPropsPub {
         .bind(self.end)
         .bind(self.need_sig)
         .bind(&self.name)
+        .bind(&json)
         .fetch_one(&mut *conn)
         .await?;
         for (i, q) in self.questions.iter().enumerate() {
