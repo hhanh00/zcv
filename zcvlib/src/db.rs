@@ -23,7 +23,10 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS elections(
         id_election INTEGER PRIMARY KEY,
         hash BLOB NOT NULL,
-        data BLOB NOT NULL,
+        name TEXT NOT NULL,
+        start INTEGER NOT NULL,
+        end INTEGER NOT NULL,
+        need_sig BOOL NOT NULL,
         UNIQUE (hash))",
     )
     .execute(&mut *conn)
@@ -32,7 +35,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS questions(
         id_question INTEGER PRIMARY KEY,
         election INTEGER NOT NULL,
-        data TEXT NOT NULL)",
+        idx INTEGER NOT NULL,
+        data BLOB NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
@@ -117,6 +121,7 @@ fn derive_spending_key(network: &Network, seed: String, aindex: u32) -> ZCVResul
     Ok(spk)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn store_received_note(
     conn: &mut SqliteConnection,
     election_domain: Fp,
