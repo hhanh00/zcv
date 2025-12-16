@@ -1,6 +1,7 @@
 use bech32::{Bech32m, Hrp};
 use bincode::Encode;
 use bip39::Mnemonic;
+use blake2b_simd::Params;
 use ff::PrimeField;
 use orchard::{
     keys::{FullViewingKey, Scope},
@@ -8,7 +9,7 @@ use orchard::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{ZCVResult, error::IntoAnyhow};
+use crate::{ZCVResult, error::IntoAnyhow, tiu};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ElectionProps {
@@ -144,6 +145,20 @@ impl QuestionPropHashable {
     }
 }
 
+impl ElectionPropsPub {
+    pub fn hash(&self) -> ZCVResult<[u8; 32]> {
+        let mut hasher = Params::new().personal(b"ZcashElectionHsh")
+        .hash_length(32)
+        .to_state();
+        for (i, _) in self.questions.iter().enumerate() {
+            let domain = QuestionPropHashable::for_question(self, i).calculate_domain()?;
+            hasher.update(domain.as_slice());
+        }
+        let h: [u8; 32] = tiu!(hasher.finalize().as_bytes());
+        Ok(h)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -181,8 +196,14 @@ mod tests {
         let epub = e.build().unwrap();
         println!("{epub:?}");
 
-        let hash = super::QuestionPropHashable::for_question(&epub, 1).calculate_domain().unwrap();
+        let hash = super::QuestionPropHashable::for_question(&epub, 1)
+            .calculate_domain()
+            .unwrap();
         println!("{}", hex::encode(hash));
-        assert_eq!(hash, *hex::decode("5e7c105f1dc89bc582f53cb1b1ab8e46170562af4061a68a67cf9f474a5c623b").unwrap());
+        assert_eq!(
+            hash,
+            *hex::decode("5e7c105f1dc89bc582f53cb1b1ab8e46170562af4061a68a67cf9f474a5c623b")
+                .unwrap()
+        );
     }
 }

@@ -2,6 +2,7 @@ pub mod error;
 pub mod pod;
 pub mod context;
 pub mod db;
+pub mod election;
 pub mod lwd;
 
 #[path = "cash.z.wallet.sdk.rpc.rs"]

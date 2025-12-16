@@ -3049,6 +3049,7 @@ dependencies = [
  "bech32",
  "bincode",
  "bip39",
+ "blake2b_simd",
  "ff",
  "hex",
  "orchard",
