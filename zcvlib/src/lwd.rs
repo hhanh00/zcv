@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use crate::{
     ZCVResult,
-    db::{get_ivks, store_received_note},
+    db::{get_ivks, store_received_note, store_spend},
     rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
@@ -38,6 +40,9 @@ pub async fn scan_blocks(
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
+    query("DELETE FROM notes").execute(&mut *conn).await?;
+    query("DELETE FROM spends").execute(&mut *conn).await?;
+
     let domains = query(
         "SELECT id_question, domain FROM questions
         WHERE election = ?1 ORDER BY idx",
@@ -56,6 +61,8 @@ pub async fn scan_blocks(
         (0, PreparedIncomingViewingKey::new(&eivk)),
         (1, PreparedIncomingViewingKey::new(&iivk)),
     ];
+
+    let mut nfs: HashSet<[u8; 32]> = HashSet::new();
 
     let mut blocks = client
         .get_block_range(Request::new(BlockRange {
@@ -84,9 +91,15 @@ pub async fn scan_blocks(
                     ephemeral_key,
                     ciphertext,
                 } = a;
+                let nf: [u8; 32] = tiu!(nullifier);
+                if nfs.contains(&nf) {
+                    for (id_question, _) in domains.iter() {
+                        store_spend(conn, *id_question, &nf, height).await?;
+                    }
+                }
 
                 let act = CompactAction::from_parts(
-                    Nullifier::from_bytes(&tiu!(nullifier)).unwrap(),
+                    Nullifier::from_bytes(&nf).unwrap(),
                     ExtractedNoteCommitment::from_bytes(&tiu!(cmx)).unwrap(),
                     EphemeralKeyBytes(tiu!(ephemeral_key)),
                     tiu!(ciphertext),
@@ -112,8 +125,13 @@ pub async fn scan_blocks(
                             )
                             .await?;
                         }
+
+                        // track new note nullifier
+                        let nf = note.nullifier(&fvk).to_bytes();
+                        nfs.insert(nf);
                     }
                 }
+
                 position += 1;
             }
         }

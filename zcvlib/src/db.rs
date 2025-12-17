@@ -163,6 +163,19 @@ pub async fn store_received_note(
     Ok(())
 }
 
+pub async fn store_spend(conn: &mut SqliteConnection, id_question: u32, nf: &[u8], height: u32) -> ZCVResult<()> {
+    query(
+        "INSERT INTO spends
+        (id_note, height, value)
+        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND nf = ?2")
+    .bind(id_question)
+    .bind(nf)
+    .bind(height)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{context::Context, db::set_account_seed};
