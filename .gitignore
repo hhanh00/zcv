@@ -2,3 +2,4 @@ target/
 build/
 orchard/
 *.code-workspace
+*.db
