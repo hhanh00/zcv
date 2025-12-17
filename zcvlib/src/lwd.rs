@@ -105,7 +105,6 @@ pub async fn scan_blocks(
                                 &fvk,
                                 &note,
                                 &address,
-                                true,
                                 height,
                                 position,
                                 *id_question,
