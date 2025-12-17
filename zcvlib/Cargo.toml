@@ -29,3 +29,6 @@ blake2b_simd = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
+
+[dev-dependencies]
+# serial_test = { workspace = true }

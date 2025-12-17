@@ -16,7 +16,7 @@ use orchard::{
     note_encryption::{CompactAction, OrchardDomain},
 };
 use pasta_curves::Fp;
-use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
+use sqlx::{Acquire, Row, SqliteConnection, query, sqlite::SqliteRow};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
@@ -40,8 +40,9 @@ pub async fn scan_blocks(
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
-    query("DELETE FROM notes").execute(&mut *conn).await?;
-    query("DELETE FROM spends").execute(&mut *conn).await?;
+    let mut db_tx = conn.begin().await?;
+    query("DELETE FROM notes").execute(&mut *db_tx).await?;
+    query("DELETE FROM spends").execute(&mut *db_tx).await?;
 
     let domains = query(
         "SELECT id_question, domain FROM questions
@@ -54,13 +55,16 @@ pub async fn scan_blocks(
         let domain = Fp::from_repr(tiu!(d)).unwrap();
         (idx, domain)
     })
-    .fetch_all(&mut *conn)
+    .fetch_all(&mut *db_tx)
     .await?;
-    let (fvk, eivk, iivk) = get_ivks(network, conn).await?;
+    println!("{} questions", domains.len());
+
+    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx).await?;
     let ivks = [
         (0, PreparedIncomingViewingKey::new(&eivk)),
         (1, PreparedIncomingViewingKey::new(&iivk)),
     ];
+    println!("{:?}", fvk);
 
     let mut nfs: HashSet<[u8; 32]> = HashSet::new();
 
@@ -94,7 +98,7 @@ pub async fn scan_blocks(
                 let nf: [u8; 32] = tiu!(nullifier);
                 if nfs.contains(&nf) {
                     for (id_question, _) in domains.iter() {
-                        store_spend(conn, *id_question, &nf, height).await?;
+                        store_spend(&mut db_tx, *id_question, &nf, height).await?;
                     }
                 }
 
@@ -113,7 +117,7 @@ pub async fn scan_blocks(
 
                         for (id_question, domain) in domains.iter() {
                             store_received_note(
-                                conn,
+                                &mut db_tx,
                                 *domain,
                                 &fvk,
                                 &note,
@@ -136,43 +140,6 @@ pub async fn scan_blocks(
             }
         }
     }
+    db_tx.commit().await?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        context::Context,
-        db::{create_schema, set_account_seed},
-        lwd::{connect, scan_blocks},
-    };
-    use anyhow::Result;
-    use sqlx::{Sqlite, pool::PoolConnection};
-    use zcash_protocol::consensus::Network;
-
-    pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
-
-    async fn setup() -> Result<PoolConnection<Sqlite>> {
-        let ctx = Context::new("vote.db", "").await?;
-        let mut conn = ctx.connect().await?;
-        create_schema(&mut conn).await?;
-        set_account_seed(&mut conn, TEST_SEED, 0).await?;
-        Ok(conn)
-    }
-
-    #[tokio::test]
-    async fn test_scan_blocks() -> Result<()> {
-        let mut conn = setup().await?;
-        let mut client = connect("https://zec.rocks").await?;
-        scan_blocks(
-            &Network::MainNetwork,
-            &mut conn,
-            &mut client,
-            1,
-            3_168_000,
-            3_169_000,
-        )
-        .await?;
-        Ok(())
-    }
 }

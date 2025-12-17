@@ -32,6 +32,7 @@ zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
 zip32 = "0.2"
 tonic-prost-build = "0.14"
+serial_test = "3.2.0"
 
 [workspace.dependencies.hex]
 features = ["serde"]
