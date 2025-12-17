@@ -1,3 +1,10 @@
+[package]
+edition = "2024"
+name = "zcvlib"
+version = "0.1.0"
+license = "MIT"
+description = "A rust library to coin weighted voting for Zcash"
+
 [dependencies]
 orchard = { workspace = true }
 anyhow = { workspace = true }
@@ -22,8 +29,3 @@ blake2b_simd = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
-
-[package]
-edition = "2024"
-name = "zcvlib"
-version = "0.1.0"
