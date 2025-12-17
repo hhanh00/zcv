@@ -63,6 +63,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         scope INTEGER NOT NULL,
         position INTEGER NOT NULL,
         nf BLOB NOT NULL,
+        dnf BLOB NOT NULL,
         rho BLOB NOT NULL,
         diversifier BLOB NOT NULL,
         rseed BLOB NOT NULL,
@@ -133,28 +134,25 @@ pub async fn store_received_note(
     fvk: &FullViewingKey,
     note: &Note,
     address: &Address,
-    pre_snapshot: bool,
     height: u32,
     position: u32,
     question: u32,
     scope: u32,
 ) -> ZCVResult<()> {
-    let nf = if pre_snapshot {
-        note.nullifier(fvk)
-    } else {
-        note.nullifier_domain(fvk, election_domain)
-    };
+    let nf = note.nullifier(fvk);
+    let dnf = note.nullifier_domain(fvk, election_domain);
 
     query(
         "INSERT INTO notes
-    (question, height, scope, position, nf, rho, diversifier, rseed, value)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    (question, height, scope, position, nf, dnf, rho, diversifier, rseed, value)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(question)
     .bind(height)
     .bind(scope)
     .bind(position)
     .bind(nf.to_bytes().as_slice())
+    .bind(dnf.to_bytes().as_slice())
     .bind(note.rho().to_bytes().as_slice())
     .bind(address.diversifier().as_array().as_slice())
     .bind(note.rseed().as_bytes().as_slice())
