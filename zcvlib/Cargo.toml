@@ -1,3 +1,8 @@
+[package]
+edition = "2024"
+name = "zcvlib"
+version = "0.0.0"
+
 [dependencies]
 orchard = { workspace = true }
 anyhow = { workspace = true }
@@ -22,8 +27,3 @@ blake2b_simd = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
-
-[package]
-edition = "2024"
-name = "zcvlib"
-version = "0.1.0"
