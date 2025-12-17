@@ -1,6 +1,6 @@
 {
   "packages": {
-    ".": {
+    "./zcvlib": {
       "release-type": "rust",
       "changelog-path": "CHANGELOG.md"
     }
