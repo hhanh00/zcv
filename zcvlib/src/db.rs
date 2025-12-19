@@ -178,24 +178,12 @@ pub async fn store_spend(conn: &mut SqliteConnection, id_question: u32, nf: &[u8
 
 #[cfg(test)]
 mod tests {
-    use crate::{context::Context, db::set_account_seed};
+    use crate::{db::set_account_seed, tests::{get_connection, test_setup}};
     use anyhow::Result;
-    use sqlx::{Sqlite, pool::PoolConnection};
-
-    pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
-
-    async fn setup() -> Result<PoolConnection<Sqlite>> {
-        let ctx = Context::new("vote.db", "").await?;
-        let mut conn = ctx.connect().await?;
-        super::create_schema(&mut conn).await?;
-        Ok(conn)
-    }
 
     #[tokio::test]
     async fn test_schema_creation() -> Result<()> {
-        let mut conn = setup().await?;
-        super::create_schema(&mut conn).await?;
-
+        let mut conn = get_connection().await?;
         let (c,): (u32,) = sqlx::query_as(
             "SELECT 1 FROM sqlite_master WHERE type = 'table'
             AND name = 'elections'",
@@ -210,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_seed() -> Result<()> {
-        let mut conn = setup().await?;
+        let mut conn = get_connection().await?;
         let r = set_account_seed(&mut conn, "", 0).await;
         assert!(r.is_err());
         Ok(())
@@ -218,8 +206,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_good_seed() -> Result<()> {
-        let mut conn = setup().await?;
-        let r = set_account_seed(&mut conn, TEST_SEED, 0).await;
+        let mut conn = get_connection().await?;
+        let r = test_setup(&mut conn).await;
         assert!(r.is_ok());
         Ok(())
     }
