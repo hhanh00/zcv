@@ -182,6 +182,8 @@ mod tests {
     use anyhow::Result;
     use sqlx::{Sqlite, pool::PoolConnection};
 
+    pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
+
     async fn setup() -> Result<PoolConnection<Sqlite>> {
         let ctx = Context::new("vote.db", "").await?;
         let mut conn = ctx.connect().await?;
@@ -217,8 +219,7 @@ mod tests {
     #[tokio::test]
     async fn test_good_seed() -> Result<()> {
         let mut conn = setup().await?;
-        let r = set_account_seed(&mut conn,
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", 0).await;
+        let r = set_account_seed(&mut conn, TEST_SEED, 0).await;
         assert!(r.is_ok());
         Ok(())
     }

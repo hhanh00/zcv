@@ -159,6 +159,17 @@ impl ElectionPropsPub {
     }
 }
 
+pub struct UTXO {
+    pub scope: u32,
+    pub position: u32,
+    pub nf: Vec<u8>,
+    pub dnf: Vec<u8>,
+    pub rho: Vec<u8>,
+    pub diversifier: Vec<u8>,
+    pub rseed: Vec<u8>,
+    pub value: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
