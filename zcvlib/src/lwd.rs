@@ -111,7 +111,7 @@ pub async fn scan_blocks(
 
                 let domain = OrchardDomain::for_compact_action(&act);
                 for (scope, pivk) in ivks.iter() {
-                    if let Some((note, address)) = try_compact_note_decryption(&domain, pivk, &act)
+                    if let Some((note, _)) = try_compact_note_decryption(&domain, pivk, &act)
                     {
                         println!("Found note at {} for {} zats", height, note.value().inner());
 
@@ -121,7 +121,6 @@ pub async fn scan_blocks(
                                 *domain,
                                 &fvk,
                                 &note,
-                                &address,
                                 height,
                                 position,
                                 *id_question,

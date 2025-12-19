@@ -160,6 +160,7 @@ impl ElectionPropsPub {
 }
 
 pub struct UTXO {
+    pub height: u32,
     pub scope: u32,
     pub position: u32,
     pub nf: Vec<u8>,
