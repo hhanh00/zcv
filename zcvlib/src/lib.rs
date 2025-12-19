@@ -18,3 +18,6 @@ macro_rules! tiu {
         $x.try_into().unwrap()
     };
 }
+
+#[cfg(test)]
+pub mod tests;

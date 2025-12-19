@@ -48,67 +48,18 @@ mod tests {
     use std::{thread::sleep, time::Duration};
 
     use anyhow::Result;
-    use serde_json::json;
-    use sqlx::{Sqlite, pool::PoolConnection};
-    use zcash_protocol::consensus::Network;
 
     use crate::{
         balance::get_balance,
-        context::Context,
-        db::{create_schema, set_account_seed},
-        lwd::{connect, scan_blocks}, pod::ElectionProps,
+        tests::{get_connection, run_scan, test_setup},
     };
 
-    pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
-
-    async fn setup() -> Result<PoolConnection<Sqlite>> {
-        let ctx = Context::new("vote.db", "").await?;
-        let mut conn = ctx.connect().await?;
-        create_schema(&mut conn).await?;
-        set_account_seed(&mut conn, TEST_SEED, 0).await?;
-        let e = json!({
-            "secret_seed": TEST_SEED,
-            "start": 3155000,
-            "end": 3169000,
-            "need_sig": true,
-            "name": "Test Election",
-            "questions": [
-                {
-                    "title": "Q1. What is your favorite color?",
-                    "subtitle": "",
-                    "answers": ["Red", "Green", "Blue"]
-                },
-                {
-                    "title": "Q2. Is the earth flat?",
-                    "subtitle": "",
-                    "answers": ["Yes", "No"]
-                },
-                {
-                    "title": "Q3. Do you like pizza?",
-                    "subtitle": "",
-                    "answers": ["Yes", "No"]
-                },
-            ]
-        });
-        let e: ElectionProps = serde_json::from_value(e).unwrap();
-        let e = e.build()?;
-        e.store(&mut conn).await?;
-        let mut client = connect("https://zec.rocks").await?;
-        scan_blocks(
-            &Network::MainNetwork,
-            &mut conn,
-            &mut client,
-            1,
-            3_168_000,
-            3_169_000,
-        )
-        .await?;
-        Ok(conn)
-    }
-
     #[tokio::test]
+    #[serial_test::serial]
     async fn test_question_balance() -> Result<()> {
-        let mut conn = setup().await?;
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        run_scan(&mut conn).await?;
         // Sleep to give some time for the scan to commit
         // the utxos to the db
         sleep(Duration::from_secs(1));

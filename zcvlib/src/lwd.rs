@@ -143,3 +143,19 @@ pub async fn scan_blocks(
     db_tx.commit().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use crate::tests::{get_connection, run_scan, test_setup};
+
+    #[tokio::test]
+    #[serial_test::serial]
+    pub async fn test_scan() -> Result<()> {
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        run_scan(&mut conn).await?;
+        Ok(())
+    }
+}
