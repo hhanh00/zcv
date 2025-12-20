@@ -4,6 +4,8 @@ use anyhow::Error as AnyError;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
+    Vote(#[from] orchard::vote::VoteError),
+    #[error(transparent)]
     Tonic(#[from] tonic::Status),
     #[error(transparent)]
     TonicTransport(#[from] tonic::transport::Error),

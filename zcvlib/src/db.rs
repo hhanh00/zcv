@@ -1,6 +1,6 @@
 use bip39::Mnemonic;
 use orchard::{
-    Address, Note,
+    Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
 };
 use pasta_curves::Fp;
@@ -133,7 +133,6 @@ pub async fn store_received_note(
     election_domain: Fp,
     fvk: &FullViewingKey,
     note: &Note,
-    address: &Address,
     height: u32,
     position: u32,
     question: u32,
@@ -154,7 +153,7 @@ pub async fn store_received_note(
     .bind(nf.to_bytes().as_slice())
     .bind(dnf.to_bytes().as_slice())
     .bind(note.rho().to_bytes().as_slice())
-    .bind(address.diversifier().as_array().as_slice())
+    .bind(note.recipient().diversifier().as_array().as_slice())
     .bind(note.rseed().as_bytes().as_slice())
     .bind(note.value().inner() as i64)
     .execute(conn)

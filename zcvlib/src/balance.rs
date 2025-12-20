@@ -7,21 +7,23 @@ pub async fn list_unspent_notes(
     id_question: u32,
 ) -> ZCVResult<Vec<UTXO>> {
     let utxos = query(
-        "SELECT scope, position, nf, dnf, rho, diversifier, rseed, n.value
+        "SELECT n.height, scope, position, nf, dnf, rho, diversifier, rseed, n.value
         FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
         WHERE s.id_note IS NULL AND n.question = ?1",
     )
     .bind(id_question)
     .map(|r: SqliteRow| {
-        let scope: u32 = r.get(0);
-        let position: u32 = r.get(1);
-        let nf: Vec<u8> = r.get(2);
-        let dnf: Vec<u8> = r.get(3);
-        let rho: Vec<u8> = r.get(4);
-        let diversifier: Vec<u8> = r.get(5);
-        let rseed: Vec<u8> = r.get(6);
-        let value: u64 = r.get(7);
+        let height: u32 = r.get(0);
+        let scope: u32 = r.get(1);
+        let position: u32 = r.get(2);
+        let nf: Vec<u8> = r.get(3);
+        let dnf: Vec<u8> = r.get(4);
+        let rho: Vec<u8> = r.get(5);
+        let diversifier: Vec<u8> = r.get(6);
+        let rseed: Vec<u8> = r.get(7);
+        let value: u64 = r.get(8);
         UTXO {
+            height,
             scope,
             position,
             nf,
