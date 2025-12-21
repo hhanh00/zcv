@@ -1,13 +1,17 @@
 use anyhow::Result;
 use serde_json::json;
-use sqlx::{SqliteConnection, pool::PoolConnection};
+use sqlx::{SqliteConnection, pool::PoolConnection, query_as};
 use zcash_protocol::consensus::Network;
 
 use crate::{
-    context::Context, db::{create_schema, set_account_seed}, lwd::{connect, scan_blocks}, pod::ElectionProps
+    context::Context,
+    db::{create_schema, set_account_seed},
+    lwd::{connect, scan_blocks},
+    pod::ElectionProps,
 };
 
 pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
+pub const TEST_ELECTION_SEED: &str = "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 
 pub async fn get_connection() -> Result<PoolConnection<sqlx::Sqlite>> {
     let ctx = Context::new("vote.db", "").await?;
@@ -19,7 +23,7 @@ pub async fn get_connection() -> Result<PoolConnection<sqlx::Sqlite>> {
 pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     set_account_seed(conn, TEST_SEED, 0).await?;
     let e = json!({
-        "secret_seed": TEST_SEED,
+        "secret_seed": TEST_ELECTION_SEED,
         "start": 3155000,
         "end": 3169000,
         "need_sig": true,
@@ -49,6 +53,13 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
 }
 
 pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
+    let (c,): (u32,) = query_as("SELECT COUNT(*) FROM notes")
+        .fetch_one(&mut *conn)
+        .await?;
+    if c != 0 {
+        return Ok(());
+    }
+
     let mut client = connect("https://zec.rocks").await?;
     scan_blocks(
         &Network::MainNetwork,
@@ -59,5 +70,8 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         3_169_000,
     )
     .await?;
+    // Sleep to give some time for the scan to commit
+    // the utxos to the db
+    std::thread::sleep(std::time::Duration::from_secs(1));
     Ok(())
 }

@@ -26,6 +26,7 @@ tonic = { workspace = true }
 tonic-prost = { workspace = true }
 prost = { workspace = true }
 blake2b_simd = { workspace = true }
+rand_core = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }

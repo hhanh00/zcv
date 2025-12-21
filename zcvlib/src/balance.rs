@@ -1,17 +1,20 @@
+use pasta_curves::Fp;
+use ff::PrimeField;
 use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 
 use crate::{ZCVResult, pod::UTXO};
 
 pub async fn list_unspent_notes(
     conn: &mut SqliteConnection,
-    id_question: u32,
+    domain: Fp,
 ) -> ZCVResult<Vec<UTXO>> {
     let utxos = query(
         "SELECT n.height, scope, position, nf, dnf, rho, diversifier, rseed, n.value
         FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
-        WHERE s.id_note IS NULL AND n.question = ?1",
+        JOIN questions q ON q.id_question = n.question
+        WHERE s.id_note IS NULL AND q.domain = ?1",
     )
-    .bind(id_question)
+    .bind(domain.to_repr().as_slice())
     .map(|r: SqliteRow| {
         let height: u32 = r.get(0);
         let scope: u32 = r.get(1);
@@ -39,21 +42,18 @@ pub async fn list_unspent_notes(
     Ok(utxos)
 }
 
-pub async fn get_balance(conn: &mut SqliteConnection, id_question: u32) -> ZCVResult<u64> {
-    let utxos = list_unspent_notes(conn, id_question).await?;
+pub async fn get_balance(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<u64> {
+    let utxos = list_unspent_notes(conn, domain).await?;
     let balance = utxos.iter().map(|utxo| utxo.value).sum::<u64>();
     Ok(balance)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{thread::sleep, time::Duration};
-
     use anyhow::Result;
 
     use crate::{
-        balance::get_balance,
-        tests::{get_connection, run_scan, test_setup},
+        balance::get_balance, db::get_domain, tests::{get_connection, run_scan, test_setup}
     };
 
     #[tokio::test]
@@ -62,10 +62,8 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        // Sleep to give some time for the scan to commit
-        // the utxos to the db
-        sleep(Duration::from_secs(1));
-        let balance = get_balance(&mut conn, 3).await?;
+        let domain = get_domain(&mut conn, 1, 2).await?;
+        let balance = get_balance(&mut conn, domain).await?;
         assert_eq!(balance, 1169078);
         Ok(())
     }

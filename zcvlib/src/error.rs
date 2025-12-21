@@ -3,6 +3,8 @@ use anyhow::Error as AnyError;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Not Enough Votes Remaining")]
+    NotEnoughVotes,
     #[error(transparent)]
     Vote(#[from] orchard::vote::VoteError),
     #[error(transparent)]
