@@ -1,9 +1,13 @@
+use bip39::Mnemonic;
+use orchard::keys::SpendingKey;
+use pasta_curves::Fp;
+use ff::PrimeField;
 use sqlx::{SqliteConnection, query, query_as};
 
 use crate::{
     ZCVResult,
     error::IntoAnyhow,
-    pod::{ElectionPropsPub, QuestionPropHashable},
+    pod::{ElectionPropsPub, ZCV_MNEMONIC_DOMAIN},
 };
 
 impl ElectionPropsPub {
@@ -31,7 +35,7 @@ impl ElectionPropsPub {
         .await?;
         for (i, q) in self.questions.iter().enumerate() {
             let q_js = serde_json::to_string(q).anyhow()?;
-            let domain = QuestionPropHashable::for_question(self, i).calculate_domain()?;
+            let domain = q.domain(self)?;
             query(
                 "INSERT INTO questions
                 (election, idx, domain, title, subtitle, data)
@@ -44,7 +48,7 @@ impl ElectionPropsPub {
             )
             .bind(election)
             .bind(i as u32)
-            .bind(domain.as_slice())
+            .bind(domain.to_repr().as_slice())
             .bind(&q.title)
             .bind(&q.subtitle)
             .bind(q_js)
@@ -53,4 +57,16 @@ impl ElectionPropsPub {
         }
         Ok(())
     }
+}
+
+pub fn derive_question_sk(seed: &str, coin_type: u32, domain: Fp) -> ZCVResult<SpendingKey> {
+    let mnemonic = Mnemonic::parse(seed).anyhow()?;
+    let seed = mnemonic.to_seed("");
+    let seed = blake2b_simd::Params::new()
+        .hash_length(64)
+        .personal(ZCV_MNEMONIC_DOMAIN)
+        .key(domain.to_repr().as_slice())
+        .hash(&seed);
+    let spk = SpendingKey::from_zip32_seed(seed.as_array(), coin_type, zip32::AccountId::ZERO).anyhow()?;
+    Ok(spk)
 }

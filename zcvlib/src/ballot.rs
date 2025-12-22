@@ -101,10 +101,9 @@ pub async fn decrypt_ballot_data(
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use bip39::Mnemonic;
     use orchard::{
         keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-        vote::{derive_question_sk, try_decrypt_ballot},
+        vote::try_decrypt_ballot,
     };
     use rand_core::OsRng;
     use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
@@ -112,8 +111,8 @@ mod tests {
     use crate::{
         ballot::encrypt_ballot_data,
         db::get_domain,
+        election::derive_question_sk,
         error::IntoAnyhow,
-        pod::ZCV_MNEMONIC_DOMAIN,
         tests::{TEST_ELECTION_SEED, get_connection, run_scan, test_setup},
     };
 
@@ -133,9 +132,8 @@ mod tests {
             OsRng,
         )
         .await?;
-        let mnemonic = Mnemonic::parse(TEST_ELECTION_SEED).anyhow()?;
-        let seed = mnemonic.to_seed(ZCV_MNEMONIC_DOMAIN);
-        let spk = derive_question_sk(&seed, MainNetwork.coin_type(), 2, 1).anyhow()?;
+        let spk =
+            derive_question_sk(TEST_ELECTION_SEED, MainNetwork.coin_type(), domain).anyhow()?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
         let n = try_decrypt_ballot(&ivk, &ballot.actions[0])?;
