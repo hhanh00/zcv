@@ -12,6 +12,7 @@ pub mod rpc;
 // or tonic::include_proto!("cash.z.wallet.sdk.rpc");
 
 pub use error::ZCVResult;
+pub use error::Error as ZCVError;
 
 #[macro_export]
 macro_rules! tiu {

@@ -4,12 +4,17 @@ use bip39::Mnemonic;
 use blake2b_simd::Params;
 use ff::PrimeField;
 use orchard::{
-    keys::{FullViewingKey, Scope},
+    Note,
+    keys::{Diversifier, FullViewingKey, Scope},
+    note::{RandomSeed, Rho},
+    value::NoteValue,
     vote::{calculate_domain, derive_question_sk},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{ZCVResult, error::IntoAnyhow, tiu};
+
+pub const ZCV_MNEMONIC_DOMAIN: &str = "ZCVote";
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ElectionProps {
@@ -61,6 +66,8 @@ pub struct AnswerPub {
     pub address: String,
 }
 
+pub const ZCV_HRP: &str = "zcv";
+
 impl ElectionProps {
     pub fn build(self) -> ZCVResult<ElectionPropsPub> {
         let ElectionProps {
@@ -71,10 +78,10 @@ impl ElectionProps {
             name,
             questions,
         } = self;
-        let hrp = Hrp::parse("zcv").anyhow()?;
+        let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
 
         let m = Mnemonic::parse(&secret_seed).anyhow()?;
-        let s = m.to_seed("ZCVote");
+        let s = m.to_seed(ZCV_MNEMONIC_DOMAIN);
         let questions = questions
             .into_iter()
             .enumerate()
@@ -147,9 +154,10 @@ impl QuestionPropHashable {
 
 impl ElectionPropsPub {
     pub fn hash(&self) -> ZCVResult<[u8; 32]> {
-        let mut hasher = Params::new().personal(b"ZcashElectionHsh")
-        .hash_length(32)
-        .to_state();
+        let mut hasher = Params::new()
+            .personal(b"ZcashElectionHsh")
+            .hash_length(32)
+            .to_state();
         for (i, _) in self.questions.iter().enumerate() {
             let domain = QuestionPropHashable::for_question(self, i).calculate_domain()?;
             hasher.update(domain.as_slice());
@@ -169,6 +177,31 @@ pub struct UTXO {
     pub diversifier: Vec<u8>,
     pub rseed: Vec<u8>,
     pub value: u64,
+}
+
+impl UTXO {
+    pub fn to_note(self, fvk: &FullViewingKey) -> Note {
+        let UTXO {
+            scope,
+            rho,
+            diversifier,
+            rseed,
+            value,
+            ..
+        } = self;
+        let d = Diversifier::from_bytes(tiu!(diversifier));
+        let scope = if scope == 0 {
+            Scope::External
+        } else {
+            Scope::Internal
+        };
+        let recipient = fvk.address(d, scope);
+        let value = NoteValue::from_raw(value);
+        let rho = Rho::from_bytes(&tiu!(rho)).unwrap();
+        let rseed = RandomSeed::from_bytes(tiu!(rseed), &rho).unwrap();
+
+        Note::from_parts(recipient, value, rho, rseed).unwrap()
+    }
 }
 
 #[cfg(test)]

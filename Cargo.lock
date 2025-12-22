@@ -1381,7 +1381,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=d68e6b47cdd171425d9c57a2be7cf5ebbcb4829f#d68e6b47cdd171425d9c57a2be7cf5ebbcb4829f"
+source = "git+https://github.com/hhanh00/orchard.git?rev=5526d7c6915f9a2a7a0687da37aaf4b9534dfb74#5526d7c6915f9a2a7a0687da37aaf4b9534dfb74"
 dependencies = [
  "aes",
  "bitvec",
@@ -3111,6 +3111,7 @@ dependencies = [
  "orchard",
  "pasta_curves",
  "prost",
+ "rand_core",
  "serde",
  "serde_json",
  "serial_test",

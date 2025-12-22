@@ -1,4 +1,6 @@
+use anyhow::Context;
 use bip39::Mnemonic;
+use ff::PrimeField;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
@@ -8,7 +10,7 @@ use sqlx::{SqliteConnection, query, query_as};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
-use crate::{ZCVResult, error::IntoAnyhow};
+use crate::{ZCVResult, error::IntoAnyhow, pod::QuestionPropPub, tiu};
 
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     query(
@@ -109,14 +111,41 @@ pub async fn get_ivks(
         query_as("SELECT seed, aindex FROM account WHERE id_account = 0")
             .fetch_one(conn)
             .await?;
-    let spk = derive_spending_key(network, seed, aindex)?;
+    let spk = derive_spending_key(network, &seed, aindex)?;
     let fvk = FullViewingKey::from(&spk);
     let ivks = (fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal));
     Ok((fvk, ivks.0, ivks.1))
 }
 
-fn derive_spending_key(network: &Network, seed: String, aindex: u32) -> ZCVResult<SpendingKey> {
-    let mnemonic = Mnemonic::parse(&seed).anyhow()?;
+pub async fn get_domain(
+    conn: &mut SqliteConnection,
+    id_election: u32,
+    question: usize,
+) -> ZCVResult<Fp> {
+    let (domain,): (Vec<u8>,) = query_as(
+        "SELECT domain FROM questions
+    WHERE election = ?1 AND idx = ?2",
+    )
+    .bind(id_election)
+    .bind(question as u32)
+    .fetch_one(conn)
+    .await
+    .context("select domain")?;
+    let domain = Fp::from_repr(tiu!(domain)).unwrap();
+    Ok(domain)
+}
+
+pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
+    let (data,): (String,) = query_as("SELECT data FROM questions WHERE domain = ?1")
+        .bind(domain.to_repr().as_slice())
+        .fetch_one(conn)
+        .await?;
+    let question: QuestionPropPub = serde_json::from_str(&data).unwrap();
+    Ok(question)
+}
+
+pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVResult<SpendingKey> {
+    let mnemonic = Mnemonic::parse(seed).anyhow()?;
     let seed = mnemonic.to_seed("");
     let spk = SpendingKey::from_zip32_seed(
         &seed,
@@ -162,11 +191,17 @@ pub async fn store_received_note(
     Ok(())
 }
 
-pub async fn store_spend(conn: &mut SqliteConnection, id_question: u32, nf: &[u8], height: u32) -> ZCVResult<()> {
+pub async fn store_spend(
+    conn: &mut SqliteConnection,
+    id_question: u32,
+    nf: &[u8],
+    height: u32,
+) -> ZCVResult<()> {
     query(
         "INSERT INTO spends
         (id_note, height, value)
-        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND nf = ?2")
+        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND nf = ?2",
+    )
     .bind(id_question)
     .bind(nf)
     .bind(height)
@@ -177,7 +212,10 @@ pub async fn store_spend(conn: &mut SqliteConnection, id_question: u32, nf: &[u8
 
 #[cfg(test)]
 mod tests {
-    use crate::{db::set_account_seed, tests::{get_connection, test_setup}};
+    use crate::{
+        db::set_account_seed,
+        tests::{get_connection, test_setup},
+    };
     use anyhow::Result;
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 [patch.crates-io.orchard]
 # path = "./orchard"
 git = "https://github.com/hhanh00/orchard.git"
-rev = "d68e6b47cdd171425d9c57a2be7cf5ebbcb4829f"
+rev = "5526d7c6915f9a2a7a0687da37aaf4b9534dfb74"
 
 [workspace]
 exclude = ["orchard"]
@@ -21,8 +21,7 @@ log = "0.4"
 pasta_curves = "0.5"
 tonic-prost = "0.14"
 prost = "0.14"
-rand = "0.9"
-rand_core = "0.9"
+rand_core = "0.6"
 serde_json = "1.0"
 bincode = "2.0"
 thiserror = "2"

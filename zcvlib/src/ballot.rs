@@ -1,26 +1,84 @@
+use ff::PrimeField;
 use orchard::{
-    keys::PreparedIncomingViewingKey,
-    vote::{BallotData, try_decrypt_ballot},
+    Address,
+    keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
+    vote::{BallotAnchors, BallotData, encrypt_ballot_action, try_decrypt_ballot},
 };
 use pasta_curves::Fp;
+use rand_core::{CryptoRng, RngCore};
 use sqlx::SqliteConnection;
 use zcash_protocol::consensus::Network;
 
 use crate::{
-    ZCVResult,
-    db::{get_ivks, store_received_note},
+    ZCVError, ZCVResult,
+    balance::list_unspent_notes,
+    db::{get_ivks, get_question, store_received_note},
+    error::IntoAnyhow,
+    tiu,
 };
 
-pub async fn decrypt_ballot_data(
+pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     network: &Network,
     conn: &mut SqliteConnection,
+    domain: Fp,
+    answer: usize,
+    amount: u64,
+    mut rng: R,
+) -> ZCVResult<BallotData> {
+    let (fvk, _, _) = get_ivks(network, conn).await?;
+    let question = get_question(conn, domain).await?;
+    let answer = &question.answers[answer];
+    let (_, recipient) = bech32::decode(&answer.address).anyhow()?;
+    let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
+    let mut a = 0u64;
+    let utxos = list_unspent_notes(conn, domain).await?;
+    let mut spends = vec![];
+    for utxo in utxos {
+        let u = a.min(utxo.value);
+        a -= u;
+        spends.push(utxo);
+        if a == 0 {
+            break;
+        }
+    }
+    if a > 0 {
+        return Err(ZCVError::NotEnoughVotes);
+    }
+
+    let mut actions = vec![];
+    let mut a = amount;
+    for spend in spends {
+        let spend = spend.to_note(&fvk);
+        let spend_amount = a.min(spend.value().inner());
+        let (action, _, _) =
+            encrypt_ballot_action(domain, fvk.clone(), &spend, recipient, a, &mut rng)?;
+        a -= spend_amount;
+        actions.push(action);
+    }
+    assert_eq!(a, 0);
+    let ballot = BallotData {
+        version: 1,
+        domain: domain.to_repr().to_vec(),
+        actions,
+        anchors: BallotAnchors {
+            nf: vec![],
+            cmx: vec![],
+        },
+    };
+    Ok(ballot)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn decrypt_ballot_data(
+    conn: &mut SqliteConnection,
+    fvk: FullViewingKey,
     domain: Fp,
     question: u32,
     height: u32,
     position: u32,
     ballot: BallotData,
 ) -> ZCVResult<()> {
-    let (fvk, ivk, _) = get_ivks(network, conn).await?;
+    let ivk = fvk.to_ivk(Scope::External);
     let ivk = PreparedIncomingViewingKey::new(&ivk);
     for (i, action) in ballot.actions.iter().enumerate() {
         if let Some(note) = try_decrypt_ballot(&ivk, action)? {
@@ -38,4 +96,50 @@ pub async fn decrypt_ballot_data(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use bip39::Mnemonic;
+    use orchard::{
+        keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
+        vote::{derive_question_sk, try_decrypt_ballot},
+    };
+    use rand_core::OsRng;
+    use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
+
+    use crate::{
+        ballot::encrypt_ballot_data,
+        db::get_domain,
+        error::IntoAnyhow,
+        pod::ZCV_MNEMONIC_DOMAIN,
+        tests::{TEST_ELECTION_SEED, get_connection, run_scan, test_setup},
+    };
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_ballot_encryption() -> Result<()> {
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        run_scan(&mut conn).await?;
+        let domain = get_domain(&mut conn, 1, 2 /* question index */).await?;
+        let ballot = encrypt_ballot_data(
+            &Network::MainNetwork,
+            &mut conn,
+            domain,
+            1, /* answer index */
+            100000,
+            OsRng,
+        )
+        .await?;
+        let mnemonic = Mnemonic::parse(TEST_ELECTION_SEED).anyhow()?;
+        let seed = mnemonic.to_seed(ZCV_MNEMONIC_DOMAIN);
+        let spk = derive_question_sk(&seed, MainNetwork.coin_type(), 2, 1).anyhow()?;
+        let fvk = FullViewingKey::from(&spk);
+        let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
+        let n = try_decrypt_ballot(&ivk, &ballot.actions[0])?;
+        assert!(n.is_some());
+        Ok(())
+    }
 }
