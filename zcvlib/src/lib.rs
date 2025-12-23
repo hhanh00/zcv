@@ -6,6 +6,7 @@ pub mod election;
 pub mod lwd;
 pub mod balance;
 pub mod ballot;
+pub mod server;
 
 #[path = "cash.z.wallet.sdk.rpc.rs"]
 pub mod rpc;
