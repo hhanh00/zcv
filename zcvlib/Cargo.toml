@@ -28,6 +28,10 @@ prost = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_core = { workspace = true }
 
+tendermint-abci = { workspace = true }
+tendermint = { workspace = true }
+tendermint-proto = { workspace = true }
+
 [build-dependencies]
 tonic-prost-build = { workspace = true }
 
