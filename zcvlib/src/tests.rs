@@ -21,7 +21,8 @@ pub async fn get_connection() -> Result<PoolConnection<sqlx::Sqlite>> {
 }
 
 pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
-    set_account_seed(conn, TEST_SEED, 0).await?;
+    set_account_seed(conn, 0, TEST_SEED, 0).await?;
+    set_account_seed(conn, 1, TEST_ELECTION_SEED, 0).await?;
     let e = json!({
         "secret_seed": TEST_ELECTION_SEED,
         "start": 3155000,
