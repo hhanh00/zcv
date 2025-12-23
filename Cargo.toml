@@ -32,6 +32,9 @@ zcash_protocol = "0.7"
 zip32 = "0.2"
 tonic-prost-build = "0.14"
 serial_test = "3.2.0"
+tendermint-abci = {version = "0.40.1", features = ["client"]}
+tendermint = "0.40.1"
+tendermint-proto = "0.40.1"
 
 [workspace.dependencies.hex]
 features = ["serde"]
