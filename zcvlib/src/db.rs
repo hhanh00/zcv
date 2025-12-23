@@ -87,15 +87,17 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
 
 pub async fn set_account_seed(
     conn: &mut SqliteConnection,
+    account: u32,
     mnemonic: &str,
     aindex: u32,
 ) -> ZCVResult<()> {
     Mnemonic::parse(mnemonic).anyhow()?;
     query(
         "INSERT INTO account(id_account, seed, aindex)
-    VALUES (0, ?1, ?2) ON CONFLICT DO UPDATE
+    VALUES (?1, ?2, ?3) ON CONFLICT DO UPDATE
     SET seed = excluded.seed, aindex = excluded.aindex",
     )
+    .bind(account)
     .bind(mnemonic)
     .bind(aindex)
     .execute(conn)
@@ -236,7 +238,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_seed() -> Result<()> {
         let mut conn = get_connection().await?;
-        let r = set_account_seed(&mut conn, "", 0).await;
+        let r = set_account_seed(&mut conn, 0, "", 0).await;
         assert!(r.is_err());
         Ok(())
     }
