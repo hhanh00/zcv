@@ -4,13 +4,19 @@ use ff::PrimeField;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
+    vote::Ballot,
 };
 use pasta_curves::Fp;
 use sqlx::{SqliteConnection, query, query_as};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
-use crate::{ZCVResult, error::IntoAnyhow, pod::QuestionPropPub, tiu};
+use crate::{
+    ZCVResult,
+    error::IntoAnyhow,
+    pod::{ElectionPropsPub, QuestionPropPub},
+    tiu,
+};
 
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     query(
@@ -82,6 +88,17 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+
+    // server / validator
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ballots(
+        height INTEGER PRIMARY KEY,
+        question INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        witness TEXT NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -117,6 +134,19 @@ pub async fn get_ivks(
     let fvk = FullViewingKey::from(&spk);
     let ivks = (fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal));
     Ok((fvk, ivks.0, ivks.1))
+}
+
+pub async fn get_election(
+    conn: &mut SqliteConnection,
+    id_election: u32,
+) -> ZCVResult<ElectionPropsPub> {
+    let (election,): (String,) = query_as("SELECT data FROM elections WHERE id_election = ?1")
+        .bind(id_election)
+        .fetch_one(conn)
+        .await
+        .context("select election")?;
+    let domain: ElectionPropsPub = serde_json::from_str(&election)?;
+    Ok(domain)
 }
 
 pub async fn get_domain(
@@ -212,13 +242,37 @@ pub async fn store_spend(
     Ok(())
 }
 
+pub async fn store_ballot(
+    conn: &mut SqliteConnection,
+    height: u32,
+    ballot: Ballot,
+) -> ZCVResult<()> {
+    let Ballot { data, witnesses } = ballot;
+    let domain = &data.domain;
+    query(
+        "INSERT INTO ballots(height, question, data, witness)
+    SELECT ?1, id_question, ?2, ?3 FROM questions
+    WHERE domain = ?4 ON CONFLICT DO NOTHING",
+    )
+    .bind(height)
+    .bind(serde_json::to_string(&data)?)
+    .bind(serde_json::to_string(&witnesses)?)
+    .bind(domain)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::set_account_seed,
+        db::{get_domain, get_election, set_account_seed, store_ballot},
         tests::{get_connection, test_setup},
     };
     use anyhow::Result;
+    use ff::PrimeField;
+    use orchard::vote::{Ballot, BallotAnchors, BallotData, BallotWitnesses};
+    use sqlx::{query, query_as};
 
     #[tokio::test]
     async fn test_schema_creation() -> Result<()> {
@@ -248,6 +302,37 @@ mod tests {
         let mut conn = get_connection().await?;
         let r = test_setup(&mut conn).await;
         assert!(r.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_store_ballot() -> Result<()> {
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        query("DELETE FROM ballots").execute(&mut *conn).await?;
+        let election = get_election(&mut conn, 1).await?;
+        let domain = get_domain(&mut conn, 1, 1).await?;
+        let dummy_ballot = Ballot {
+            data: BallotData {
+                version: 1,
+                domain: domain.to_repr().to_vec(),
+                actions: vec![],
+                anchors: BallotAnchors {
+                    nf: vec![0; 32],
+                    cmx: vec![0; 32],
+                },
+            },
+            witnesses: BallotWitnesses {
+                proofs: vec![],
+                sp_signatures: None,
+                binding_signature: vec![],
+            },
+        };
+        store_ballot(&mut conn, election.end + 1, dummy_ballot).await?;
+        let (count_ballot,): (u32,) = query_as("SELECT COUNT(*) FROM ballots")
+            .fetch_one(&mut *conn)
+            .await?;
+        assert_eq!(count_ballot, 1);
         Ok(())
     }
 }

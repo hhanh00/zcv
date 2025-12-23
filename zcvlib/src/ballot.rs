@@ -2,11 +2,11 @@ use ff::PrimeField;
 use orchard::{
     Address,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    vote::{BallotAnchors, BallotData, encrypt_ballot_action, try_decrypt_ballot},
+    vote::{Ballot, BallotAnchors, BallotData, encrypt_ballot_action, try_decrypt_ballot},
 };
 use pasta_curves::Fp;
 use rand_core::{CryptoRng, RngCore};
-use sqlx::SqliteConnection;
+use sqlx::{SqliteConnection, query};
 use zcash_protocol::consensus::Network;
 
 use crate::{

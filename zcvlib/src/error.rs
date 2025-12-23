@@ -14,6 +14,8 @@ pub enum Error {
     #[error(transparent)]
     SQLite(#[from] sqlx::Error),
     #[error(transparent)]
+    JSON(#[from] serde_json::Error),
+    #[error(transparent)]
     Any(#[from] anyhow::Error),
 }
 
