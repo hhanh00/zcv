@@ -16,6 +16,8 @@ pub enum Error {
     #[error(transparent)]
     JSON(#[from] serde_json::Error),
     #[error(transparent)]
+    GRPC(#[from] prost::DecodeError),
+    #[error(transparent)]
     Any(#[from] anyhow::Error),
 }
 

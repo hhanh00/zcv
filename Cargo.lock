@@ -3360,6 +3360,7 @@ dependencies = [
  "ff",
  "hex",
  "orchard",
+ "parking_lot",
  "pasta_curves",
  "prost 0.14.1",
  "rand_core",
