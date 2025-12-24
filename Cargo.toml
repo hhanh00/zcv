@@ -9,6 +9,8 @@ members = ["zcvlib"]
 resolver = "2"
 
 [workspace.dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [ "env-filter" ] }
 anyhow = "1.0"
 base64 = "0.22"
 bech32 = "0.11"
@@ -33,7 +35,6 @@ tendermint-proto = "0.40.1"
 thiserror = "2"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
-tracing = "0"
 zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
