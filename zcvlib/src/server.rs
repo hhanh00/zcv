@@ -1,11 +1,55 @@
+use parking_lot::Mutex;
+use prost::Message;
+use std::sync::Arc;
 use tendermint_abci::Application;
 use tendermint_proto::abci::{
     RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal, ResponseCheckTx,
     ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
 };
 
+use crate::{
+    ZCVError, ZCVResult,
+    vote_rpc::{Ballot, VoteMessage},
+};
+
 #[derive(Clone)]
-pub struct Server {}
+pub struct Server {
+    state: Arc<Mutex<ServerState>>,
+}
+
+impl Server {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(ServerState::new())),
+        }
+    }
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct ServerState {}
+
+impl ServerState {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn check_ballot(&mut self, ballot: Ballot) -> ZCVResult<()> {
+        let _b: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
+        // TODO: Verify ballot signature & zkp, no need to verify double-spend yet
+        Ok(())
+    }
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
@@ -14,8 +58,28 @@ impl Application for Server {
 
     // Checks if a tx is structurally correct
     // Valid txs must not be rejected
-    // But bad txs may be kept
-    fn check_tx(&self, _request: RequestCheckTx) -> ResponseCheckTx {
+    // But bad txs may be kept for the moment
+    fn check_tx(&self, request: RequestCheckTx) -> ResponseCheckTx {
+        let RequestCheckTx { mut tx, .. } = request;
+        let mut check = || {
+            let msg = VoteMessage::decode(&mut tx)?;
+            if let Some(m) = msg.type_oneof
+                && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
+            {
+                let mut state = self.state.lock();
+                state.check_ballot(ballot)?;
+            }
+            Ok::<_, ZCVError>(())
+        };
+
+        if let Err(err) = check() {
+            return ResponseCheckTx {
+                code: 1,
+                data: tx,
+                log: err.to_string(),
+                ..Default::default()
+            };
+        }
         Default::default()
     }
 

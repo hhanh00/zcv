@@ -9,6 +9,7 @@ description = "A rust library to coin weighted voting for Zcash"
 orchard = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }

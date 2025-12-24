@@ -1,0 +1,24 @@
+syntax = "proto3";
+package cash.z.vote.sdk.rpc;
+
+message VoteMessage {
+    oneof type_oneof {
+        AddValidator add_validator = 1;
+        SetElection set_election = 2;
+        uint32 start = 3;
+        Ballot ballot = 4;
+    }
+}
+
+message AddValidator {
+    bytes pub_key = 1;
+    uint32 power = 2;
+}
+
+message SetElection {
+    string election = 1;
+}
+
+message Ballot {
+    string ballot = 1;
+}
