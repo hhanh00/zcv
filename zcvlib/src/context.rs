@@ -8,10 +8,19 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn init_logger() {
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .compact()
+            .finish();
+        let _ = tracing::subscriber::set_global_default(subscriber);
+    }
+
     pub async fn new(db_path: &str, lwd_url: &str) -> ZCVResult<Context> {
+        Self::init_logger();
         let connect_options = SqliteConnectOptions::new()
-        .create_if_missing(true)
-        .filename(db_path);
+            .create_if_missing(true)
+            .filename(db_path);
         let pool = SqlitePool::connect_with(connect_options).await?;
         Ok(Context {
             pool,
@@ -21,5 +30,16 @@ impl Context {
 
     pub async fn connect(&self) -> ZCVResult<PoolConnection<Sqlite>> {
         Ok(self.pool.acquire().await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::context::Context;
+
+    #[test]
+    fn test_logger() {
+        Context::init_logger();
+        tracing::info!("Test Logger");
     }
 }

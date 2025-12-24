@@ -7,6 +7,8 @@ description = "A rust library to coin weighted voting for Zcash"
 
 [dependencies]
 orchard = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 parking_lot = { workspace = true }
