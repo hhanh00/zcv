@@ -18,6 +18,8 @@ pub enum Error {
     #[error(transparent)]
     GRPC(#[from] prost::DecodeError),
     #[error(transparent)]
+    HTTP(#[from] reqwest::Error),
+    #[error(transparent)]
     Any(#[from] anyhow::Error),
 }
 

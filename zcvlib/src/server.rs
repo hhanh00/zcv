@@ -1,6 +1,8 @@
+use base64::{Engine, prelude::BASE64_STANDARD};
 use parking_lot::Mutex;
 use prost::Message;
-use std::sync::Arc;
+use serde_json::Value;
+use std::{sync::Arc, time::Duration};
 use tendermint_abci::Application;
 use tendermint_proto::abci::{
     RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal, ResponseCheckTx,
@@ -116,4 +118,24 @@ impl Application for Server {
     fn finalize_block(&self, _request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
         Default::default()
     }
+}
+
+pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
+    let tx_data = BASE64_STANDARD.encode(tx_bytes);
+    let req_body = serde_json::json!({
+        "id": "",
+        "method": "broadcast_tx_sync",
+        "params": [tx_data]
+    });
+    let url = format!("http://127.0.0.1:{port}/v1");
+    let client = reqwest::Client::new();
+    let rep = client
+        .post(&url)
+        .timeout(Duration::from_secs(300))
+        .json(&req_body)
+        .send()
+        .await?
+        .error_for_status()?;
+    let json_rep: Value = rep.json().await?;
+    Ok(json_rep)
 }
