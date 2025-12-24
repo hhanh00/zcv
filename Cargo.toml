@@ -10,7 +10,9 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0"
+base64 = "0.22"
 bech32 = "0.11"
+bincode = "2.0"
 bip39 = "2.2"
 blake2b_simd = "1.0"
 ff = "0.13"
@@ -20,22 +22,22 @@ incrementalmerkletree = "0.8"
 log = "0.4"
 parking_lot = "0.12"
 pasta_curves = "0.5"
-tonic-prost = "0.14"
 prost = "0.14"
 rand_core = "0.6"
+reqwest = {version = "0.12", features = ["json"]}
 serde_json = "1.0"
-bincode = "2.0"
+serial_test = "3.2.0"
+tendermint = "0.40.1"
+tendermint-abci = {version = "0.40.1", features = ["client"]}
+tendermint-proto = "0.40.1"
 thiserror = "2"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
 tracing = "0"
 zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
 zip32 = "0.2"
-tonic-prost-build = "0.14"
-serial_test = "3.2.0"
-tendermint-abci = {version = "0.40.1", features = ["client"]}
-tendermint = "0.40.1"
-tendermint-proto = "0.40.1"
 
 [workspace.dependencies.hex]
 features = ["serde"]
@@ -51,25 +53,23 @@ version = "1.0"
 
 [workspace.dependencies.sqlx]
 features = [
-    "runtime-tokio",
-    "sqlite",
-    "macros",
-    "migrate",
+  "runtime-tokio",
+  "sqlite",
+  "macros",
+  "migrate",
 ]
 version = "0.8"
 
 [workspace.dependencies.tokio]
 features = [
-    "rt-multi-thread",
-    "macros",
-
+  "rt-multi-thread",
+  "macros",
 ]
 version = "1.48"
 
 [workspace.dependencies.tonic]
 features = [
-    "tls-ring",
-    "tls-webpki-roots",
+  "tls-ring",
+  "tls-webpki-roots",
 ]
 version = "0.14"
-
