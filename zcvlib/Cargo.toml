@@ -5,6 +5,10 @@ version = "0.1.0"
 license = "MIT"
 description = "A rust library to coin weighted voting for Zcash"
 
+[[bin]]
+name = "vote-cometbft"
+path = "src/cometapp.rs"
+
 [dependencies]
 orchard = { workspace = true }
 tracing = { workspace = true }

@@ -2,16 +2,15 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use parking_lot::Mutex;
 use prost::Message;
 use serde_json::Value;
-use std::{sync::Arc, time::Duration};
-use tendermint_abci::Application;
+use std::{net::{Ipv4Addr, SocketAddrV4}, sync::Arc, time::Duration};
+use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::abci::{
     RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal, ResponseCheckTx,
     ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
 };
 
 use crate::{
-    ZCVError, ZCVResult,
-    vote_rpc::{Ballot, VoteMessage},
+    ZCVError, ZCVResult, error::IntoAnyhow, vote_rpc::{Ballot, VoteMessage}
 };
 
 #[derive(Clone)]
@@ -138,4 +137,12 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
         .error_for_status()?;
     let json_rep: Value = rep.json().await?;
     Ok(json_rep)
+}
+
+pub fn run_cometbft_app(port: u16) -> ZCVResult<std::thread::JoinHandle<()>> {
+    let app = Server::new();
+    let server = ServerBuilder::new(1_000_000)
+        .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app).anyhow()?;
+    let h = std::thread::spawn(move || server.listen().unwrap());
+    Ok(h)
 }
