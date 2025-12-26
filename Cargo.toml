@@ -26,6 +26,7 @@ parking_lot = "0.12"
 pasta_curves = "0.5"
 prost = "0.14"
 rand_core = "0.6"
+rocket_cors = "0.6"
 reqwest = {version = "0.12", features = ["json"]}
 serde_json = "1.0"
 serial_test = "3.2.0"
@@ -74,3 +75,9 @@ features = [
   "tls-webpki-roots",
 ]
 version = "0.14"
+
+[workspace.dependencies.rocket]
+version = "0.5"
+features = [
+  "json"
+]

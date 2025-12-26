@@ -21,6 +21,7 @@ use tonic::{
     Request,
     transport::{Channel, Endpoint},
 };
+use tracing::info;
 use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
 use zcash_protocol::consensus::Network;
 
@@ -57,14 +58,13 @@ pub async fn scan_blocks(
     })
     .fetch_all(&mut *db_tx)
     .await?;
-    println!("{} questions", domains.len());
+    info!("{} questions", domains.len());
 
     let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx).await?;
     let ivks = [
         (0, PreparedIncomingViewingKey::new(&eivk)),
         (1, PreparedIncomingViewingKey::new(&iivk)),
     ];
-    println!("{:?}", fvk);
 
     let mut nfs: HashSet<[u8; 32]> = HashSet::new();
 
@@ -113,7 +113,7 @@ pub async fn scan_blocks(
                 for (scope, pivk) in ivks.iter() {
                     if let Some((note, _)) = try_compact_note_decryption(&domain, pivk, &act)
                     {
-                        println!("Found note at {} for {} zats", height, note.value().inner());
+                        info!("Found note at {} for {} zats", height, note.value().inner());
 
                         for (id_question, domain) in domains.iter() {
                             store_received_note(
