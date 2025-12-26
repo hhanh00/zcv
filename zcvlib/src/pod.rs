@@ -243,12 +243,9 @@ mod tests {
             ]
         });
         let e: ElectionProps = serde_json::from_value(e).unwrap();
-        println!("{e:?}");
         let epub = e.build().unwrap();
-        println!("{epub:?}");
 
         let hash = epub.hash().unwrap();
-        println!("{}", hex::encode(hash));
         assert_eq!(
             hash,
             *hex::decode("b704f7ee08142e16bc9ee906f4cf21bbbd8a35a7ea1ab8762ceffe1c0075531f")

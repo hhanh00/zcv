@@ -1,8 +1,14 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use parking_lot::Mutex;
 use prost::Message;
+use rocket::{figment::Figment, routes};
+use rocket_cors::CorsOptions;
 use serde_json::Value;
-use std::{net::{Ipv4Addr, SocketAddrV4}, sync::Arc, time::Duration};
+use std::{
+    net::{Ipv4Addr, SocketAddrV4},
+    sync::Arc,
+    time::Duration,
+};
 use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::abci::{
     RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal, ResponseCheckTx,
@@ -10,7 +16,10 @@ use tendermint_proto::abci::{
 };
 
 use crate::{
-    ZCVError, ZCVResult, error::IntoAnyhow, vote_rpc::{Ballot, VoteMessage}
+    ZCVError, ZCVResult,
+    context::Context,
+    error::IntoAnyhow,
+    vote_rpc::{Ballot, VoteMessage},
 };
 
 #[derive(Clone)]
@@ -139,10 +148,29 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub fn run_cometbft_app(port: u16) -> ZCVResult<std::thread::JoinHandle<()>> {
+pub fn run_cometbft_app(port: u16) -> ZCVResult<()> {
     let app = Server::new();
     let server = ServerBuilder::new(1_000_000)
-        .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app).anyhow()?;
-    let h = std::thread::spawn(move || server.listen().unwrap());
-    Ok(h)
+        .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
+        .anyhow()?;
+    server.listen().anyhow()?;
+    Ok(())
+}
+
+pub fn run_rocket_server(config: Figment, context: Context) -> ZCVResult<()> {
+    rocket::execute(async move {
+        let cors = CorsOptions::default().to_cors().unwrap();
+        let _rocket = rocket::custom(config)
+            .attach(cors)
+            .manage(context)
+            .mount("/", routes![])
+            .ignite()
+            .await
+            .anyhow()?
+            .launch()
+            .await
+            .anyhow()?;
+        Ok::<_, ZCVError>(())
+    })?;
+    Ok(())
 }
