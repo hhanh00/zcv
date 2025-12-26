@@ -1,7 +1,7 @@
 [package]
 edition = "2024"
 name = "zcvlib"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 description = "A rust library to coin weighted voting for Zcash"
 
