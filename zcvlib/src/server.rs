@@ -4,6 +4,7 @@ use prost::Message;
 use rocket::{figment::Figment, routes};
 use rocket_cors::CorsOptions;
 use serde_json::Value;
+use sqlx::{SqliteConnection, query_as};
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
@@ -14,13 +15,8 @@ use tendermint_proto::abci::{
     ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
     ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
 };
-
 use crate::{
-    ZCVError, ZCVResult,
-    context::Context,
-    error::IntoAnyhow,
-    server::rpc::submit_ballot,
-    vote_rpc::{Ballot, VoteMessage},
+    ZCVError, ZCVResult, context::Context, db::get_election, error::IntoAnyhow, server::rpc::submit_ballot, vote_rpc::{Ballot, VoteMessage}
 };
 
 pub mod rpc;
@@ -33,24 +29,28 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(ServerState::new())),
-        }
+    pub async fn new(conn: SqliteConnection, id_election: u32) -> ZCVResult<Self> {
+        let server = ServerState::new(conn, id_election).await?;
+        Ok(Self {
+            state: Arc::new(Mutex::new(server)),
+        })
     }
 }
 
-impl Default for Server {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct ServerState {
+    pub conn: SqliteConnection,
+    pub height: u32,
 }
-
-pub struct ServerState {}
 
 impl ServerState {
-    pub fn new() -> Self {
-        Self {}
+    pub async fn new(mut conn: SqliteConnection, id_election: u32) -> ZCVResult<Self> {
+        let e = get_election(&mut conn, id_election).await?;
+        let (h,): (Option<u32>,) = query_as("SELECT MAX(height) FROM ballots")
+            .fetch_one(&mut conn)
+            .await?;
+        let height = h.unwrap_or(e.end) + 1;
+
+        Ok(Self { conn, height })
     }
 
     pub fn check_ballot(&mut self, ballot: Ballot) -> ZCVResult<()> {
@@ -58,12 +58,6 @@ impl ServerState {
         tracing::info!("check_ballot {}", serde_json::to_string(&b.data).unwrap());
         // TODO: Verify ballot signature & zkp, no need to verify double-spend yet
         Ok(())
-    }
-}
-
-impl Default for ServerState {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -137,6 +131,9 @@ impl Application for Server {
 
     // Process the block that was voted on by the validators
     fn finalize_block(&self, request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Store ballot in db, etc.
+        // rt.block_on(store_ballot(&mut self.conn, self.height, b))?;
         let tx_results: Vec<_> = request
             .txs
             .into_iter()
@@ -174,8 +171,9 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub fn run_cometbft_app(port: u16) -> ZCVResult<()> {
-    let app = Server::new();
+pub async fn run_cometbft_app(context: &Context, id_election: u32, port: u16) -> ZCVResult<()> {
+    let conn = context.connect().await?.detach();
+    let app = Server::new(conn, id_election).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

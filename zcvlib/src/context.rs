@@ -2,6 +2,7 @@ use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOption
 
 use crate::ZCVResult;
 
+#[derive(Clone)]
 pub struct Context {
     pub pool: SqlitePool,
     pub lwd_url: String,
