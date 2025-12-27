@@ -5,6 +5,7 @@ use crate::ZCVResult;
 pub struct Context {
     pub pool: SqlitePool,
     pub lwd_url: String,
+    pub comet_port: u16,
 }
 
 impl Context {
@@ -25,6 +26,7 @@ impl Context {
         Ok(Context {
             pool,
             lwd_url: lwd_url.to_string(),
+            comet_port: 0,
         })
     }
 

@@ -6,6 +6,7 @@ port = 8000
 bytes = "64 kB"
 
 [default.custom]
+cometrpc_port = 26657
 cometbft_port = 26658
 db_path = "vote.db"
 lwd_url = "https://zec.rocks"
