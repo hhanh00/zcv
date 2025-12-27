@@ -11,16 +11,21 @@ use std::{
 };
 use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::abci::{
-    RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal, ResponseCheckTx,
-    ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
+    ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
+    ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
 };
 
 use crate::{
     ZCVError, ZCVResult,
     context::Context,
     error::IntoAnyhow,
+    server::rpc::submit_ballot,
     vote_rpc::{Ballot, VoteMessage},
 };
+
+pub mod rpc;
+
+pub type RPCResult<T> = Result<T, String>;
 
 #[derive(Clone)]
 pub struct Server {
@@ -49,7 +54,8 @@ impl ServerState {
     }
 
     pub fn check_ballot(&mut self, ballot: Ballot) -> ZCVResult<()> {
-        let _b: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
+        let b: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
+        tracing::info!("check_ballot {}", serde_json::to_string(&b.data).unwrap());
         // TODO: Verify ballot signature & zkp, no need to verify double-spend yet
         Ok(())
     }
@@ -58,6 +64,13 @@ impl ServerState {
 impl Default for ServerState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl rocket::response::Responder<'_, 'static> for ZCVError {
+    fn respond_to(self, request: &'_ rocket::Request<'_>) -> rocket::response::Result<'static> {
+        let error_string = self.to_string();
+        (rocket::http::Status::InternalServerError, error_string).respond_to(request)
     }
 }
 
@@ -123,8 +136,20 @@ impl Application for Server {
     }
 
     // Process the block that was voted on by the validators
-    fn finalize_block(&self, _request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
-        Default::default()
+    fn finalize_block(&self, request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
+        let tx_results: Vec<_> = request
+            .txs
+            .into_iter()
+            .map(|tx| ExecTxResult {
+                code: 0,
+                data: tx,
+                ..ExecTxResult::default()
+            })
+            .collect();
+        ResponseFinalizeBlock {
+            tx_results,
+            ..ResponseFinalizeBlock::default()
+        }
     }
 }
 
@@ -135,6 +160,7 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
         "method": "broadcast_tx_sync",
         "params": [tx_data]
     });
+    tracing::info!("submit_tx");
     let url = format!("http://127.0.0.1:{port}/v1");
     let client = reqwest::Client::new();
     let rep = client
@@ -157,13 +183,14 @@ pub fn run_cometbft_app(port: u16) -> ZCVResult<()> {
     Ok(())
 }
 
-pub fn run_rocket_server(config: Figment, context: Context) -> ZCVResult<()> {
+pub fn run_rocket_server(config: Figment, mut context: Context, comet_port: u16) -> ZCVResult<()> {
+    context.comet_port = comet_port;
     rocket::execute(async move {
         let cors = CorsOptions::default().to_cors().unwrap();
         let _rocket = rocket::custom(config)
             .attach(cors)
             .manage(context)
-            .mount("/", routes![])
+            .mount("/", routes![submit_ballot,])
             .ignite()
             .await
             .anyhow()?

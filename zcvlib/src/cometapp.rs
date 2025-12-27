@@ -8,13 +8,14 @@ use zcvlib::{
 #[tokio::main]
 pub async fn main() -> Result<()> {
     let config = Config::figment();
+    let cometrpc_port: u16 = config.extract_inner("custom.cometrpc_port")?;
     let cometbft_port: u16 = config.extract_inner("custom.cometbft_port")?;
     let db_path: String = config.extract_inner("custom.db_path")?;
     let lwd_url: String = config.extract_inner("custom.lwd_url")?;
     let context = Context::new(&db_path, &lwd_url).await?;
 
     std::thread::spawn(move || run_cometbft_app(cometbft_port));
-    let rest = std::thread::spawn(move || run_rocket_server(config, context));
+    let rest = std::thread::spawn(move || run_rocket_server(config, context, cometrpc_port));
 
     rest.join().unwrap()?;
     Ok(())
