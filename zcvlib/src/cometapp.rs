@@ -1,8 +1,7 @@
 use anyhow::Result;
 use rocket::Config;
 use zcvlib::{
-    context::Context,
-    server::{run_cometbft_app, run_rocket_server},
+    ZCVError, context::Context, server::{run_cometbft_app, run_rocket_server}
 };
 
 #[tokio::main]
@@ -12,9 +11,20 @@ pub async fn main() -> Result<()> {
     let cometbft_port: u16 = config.extract_inner("custom.cometbft_port")?;
     let db_path: String = config.extract_inner("custom.db_path")?;
     let lwd_url: String = config.extract_inner("custom.lwd_url")?;
+    let id_election: u32 = config.extract_inner("custom.id_election")?;
     let context = Context::new(&db_path, &lwd_url).await?;
+    let context2 = context.clone();
 
-    std::thread::spawn(move || run_cometbft_app(cometbft_port));
+    std::thread::spawn(move || {
+        let r = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        r.block_on(async move {
+            run_cometbft_app(&context2, id_election, cometbft_port).await.unwrap();
+            Ok::<_, ZCVError>(())
+        })
+    });
     let rest = std::thread::spawn(move || run_rocket_server(config, context, cometrpc_port));
 
     rest.join().unwrap()?;
