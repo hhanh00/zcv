@@ -131,7 +131,7 @@ impl Application for Server {
 
     // Process the block that was voted on by the validators
     fn finalize_block(&self, request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        // let rt = tokio::runtime::Runtime::new().unwrap();
         // Store ballot in db, etc.
         // rt.block_on(store_ballot(&mut self.conn, self.height, b))?;
         let tx_results: Vec<_> = request
