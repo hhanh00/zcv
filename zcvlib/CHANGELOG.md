@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.2.0...zcvlib-v0.3.0) (2025-12-27)
+
+
+### Features
+
+* submit ballot through cometbft ([#42](https://github.com/hhanh00/zcv/issues/42)) ([0d7d7c4](https://github.com/hhanh00/zcv/commit/0d7d7c4ce083abbff48a00c701a59343a990e297))
+* submit_ballot rpc ([#40](https://github.com/hhanh00/zcv/issues/40)) ([379e047](https://github.com/hhanh00/zcv/commit/379e0473d41a61745c1f0d3ea9e2c8c16db2d0f6))
+
+
+### Bug Fixes
+
+* typo ([#43](https://github.com/hhanh00/zcv/issues/43)) ([3ae83e3](https://github.com/hhanh00/zcv/commit/3ae83e3dc9fd1bda5379bc39a9817efc0b445185))
+
 ## [0.2.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.1.0...zcvlib-v0.2.0) (2025-12-26)
 
 
