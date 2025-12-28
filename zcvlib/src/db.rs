@@ -139,13 +139,13 @@ pub async fn get_ivks(
 
 pub async fn get_election(
     conn: &mut SqliteConnection,
-    id_election: u32,
+    domain: &[u8],
 ) -> ZCVResult<ElectionPropsPub> {
-    let (election,): (String,) = query_as("SELECT data FROM elections WHERE id_election = ?1")
-        .bind(id_election)
+    let (election,): (String,) = query_as("SELECT data FROM elections WHERE hash = ?1")
+        .bind(domain)
         .fetch_one(conn)
         .await
-        .context("select election")?;
+        .context("select election by hash")?;
     let domain: ElectionPropsPub = serde_json::from_str(&election)?;
     Ok(domain)
 }
@@ -168,17 +168,17 @@ pub async fn get_domain(
     Ok(domain)
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection, id_election: u32) -> ZCVResult<Vec<u8>> {
-    let (apphash,): (Vec<u8>,) = query_as("SELECT apphash FROM elections WHERE id_election = ?1")
-        .bind(id_election)
+pub async fn get_apphash(conn: &mut SqliteConnection, domain: &[u8]) -> ZCVResult<Vec<u8>> {
+    let (apphash,): (Vec<u8>,) = query_as("SELECT apphash FROM elections WHERE hash = ?1")
+        .bind(domain)
         .fetch_one(conn)
         .await?;
     Ok(apphash)
 }
 
-pub async fn store_apphash(conn: &mut SqliteConnection, id_election: u32, apphash: &[u8]) -> ZCVResult<()> {
-    query("UPDATE elections SET apphash = ?2 WHERE id_election = ?1")
-        .bind(id_election)
+pub async fn store_apphash(conn: &mut SqliteConnection, domain: &[u8], apphash: &[u8]) -> ZCVResult<()> {
+    query("UPDATE elections SET apphash = ?2 WHERE hash = ?1")
+        .bind(domain)
         .bind(apphash)
         .execute(conn)
         .await?;
@@ -285,7 +285,7 @@ pub async fn store_ballot(
 mod tests {
     use crate::{
         db::{get_domain, get_election, set_account_seed, store_ballot},
-        tests::{get_connection, test_setup},
+        tests::{TEST_ELECTION_DOMAIN, get_connection, test_setup},
     };
     use anyhow::Result;
     use ff::PrimeField;
@@ -325,10 +325,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_ballot() -> Result<()> {
+        let domain = hex::decode(TEST_ELECTION_DOMAIN)?;
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         query("DELETE FROM ballots").execute(&mut *conn).await?;
-        let election = get_election(&mut conn, 1).await?;
+        let election = get_election(&mut conn, &domain).await?;
         let domain = get_domain(&mut conn, 1, 1).await?;
         let dummy_ballot = Ballot {
             data: BallotData {

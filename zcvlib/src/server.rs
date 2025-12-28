@@ -35,8 +35,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool, id_election: u32) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, id_election).await?;
+    pub async fn new(pool: SqlitePool, domain: &[u8]) -> ZCVResult<Self> {
+        let server = ServerState::new(pool, domain).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -45,18 +45,18 @@ impl Server {
 
 pub struct ServerState {
     pub pool: SqlitePool,
-    pub id_election: u32,
+    pub domain: Vec<u8>,
     pub start_height: u32,
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool, id_election: u32) -> ZCVResult<Self> {
+    pub async fn new(pool: SqlitePool, domain: &[u8]) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
-        let e = get_election(&mut conn, id_election).await?;
+        let e = get_election(&mut conn, domain).await?;
 
         Ok(Self {
             pool,
-            id_election,
+            domain: domain.to_vec(),
             start_height: e.end,
         })
     }
@@ -147,10 +147,9 @@ impl Application for Server {
         let mut state = self.state.lock();
         let tx_results = rt
             .block_on(async move {
-                let id_election = state.id_election;
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
-                let apphash = get_apphash(&mut db_tx, id_election).await?;
+                let apphash = get_apphash(&mut db_tx, &state.domain).await?;
                 let mut hasher = Params::new()
                     .personal(b"ZCVote___AppHash")
                     .hash_length(32)
@@ -185,7 +184,7 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, id_election, &apphash).await?;
+                store_apphash(&mut db_tx, &state.domain, &apphash).await?;
 
                 // TODO
                 // store_ballot(&mut self.conn, self.height, b).await?;
@@ -222,8 +221,8 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub async fn run_cometbft_app(context: &Context, id_election: u32, port: u16) -> ZCVResult<()> {
-    let app = Server::new(context.pool.clone(), id_election).await?;
+pub async fn run_cometbft_app(context: &Context, domain: &[u8], port: u16) -> ZCVResult<()> {
+    let app = Server::new(context.pool.clone(), domain).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

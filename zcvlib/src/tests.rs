@@ -12,6 +12,7 @@ use crate::{
 
 pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
 pub const TEST_ELECTION_SEED: &str = "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
+pub const TEST_ELECTION_DOMAIN: &str = "8019E154751C1BEEE9E40AA77DA2AEE83447C6157A6CB2D29ED37F09220FDFD2";
 
 pub async fn get_connection() -> Result<PoolConnection<sqlx::Sqlite>> {
     let ctx = Context::new("vote.db", "").await?;
