@@ -93,10 +93,13 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     // server / validator
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS ballots(
-        height INTEGER PRIMARY KEY,
+        id_ballot INTEGER PRIMARY KEY,
+        height INTEGER NOT NULL,
+        itx INTEGER NOT NULL,
         question INTEGER NOT NULL,
         data TEXT NOT NULL,
-        witness TEXT NOT NULL)",
+        witness TEXT NOT NULL,
+        UNIQUE (height, itx))",
     )
     .execute(&mut *conn)
     .await?;
@@ -176,7 +179,11 @@ pub async fn get_apphash(conn: &mut SqliteConnection, domain: &[u8]) -> ZCVResul
     Ok(apphash)
 }
 
-pub async fn store_apphash(conn: &mut SqliteConnection, domain: &[u8], apphash: &[u8]) -> ZCVResult<()> {
+pub async fn store_apphash(
+    conn: &mut SqliteConnection,
+    domain: &[u8],
+    apphash: &[u8],
+) -> ZCVResult<()> {
     query("UPDATE elections SET apphash = ?2 WHERE hash = ?1")
         .bind(domain)
         .bind(apphash)
@@ -263,16 +270,18 @@ pub async fn store_spend(
 pub async fn store_ballot(
     conn: &mut SqliteConnection,
     height: u32,
+    itx: u32,
     ballot: Ballot,
 ) -> ZCVResult<()> {
     let Ballot { data, witnesses } = ballot;
     let domain = &data.domain;
     query(
-        "INSERT INTO ballots(height, question, data, witness)
-    SELECT ?1, id_question, ?2, ?3 FROM questions
-    WHERE domain = ?4 ON CONFLICT DO NOTHING",
+        "INSERT INTO ballots(height, itx, question, data, witness)
+    SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
+    WHERE domain = ?5 ON CONFLICT DO NOTHING",
     )
     .bind(height)
+    .bind(itx)
     .bind(serde_json::to_string(&data)?)
     .bind(serde_json::to_string(&witnesses)?)
     .bind(domain)
@@ -347,7 +356,7 @@ mod tests {
                 binding_signature: vec![],
             },
         };
-        store_ballot(&mut conn, election.end + 1, dummy_ballot).await?;
+        store_ballot(&mut conn, election.end + 1, 0, dummy_ballot).await?;
         let (count_ballot,): (u32,) = query_as("SELECT COUNT(*) FROM ballots")
             .fetch_one(&mut *conn)
             .await?;
