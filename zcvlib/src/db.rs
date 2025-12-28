@@ -31,6 +31,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS elections(
         id_election INTEGER PRIMARY KEY,
         hash BLOB NOT NULL,
+        apphash BLOB NOT NULL,
         name TEXT NOT NULL,
         start INTEGER NOT NULL,
         end INTEGER NOT NULL,
@@ -165,6 +166,23 @@ pub async fn get_domain(
     .context("select domain")?;
     let domain = Fp::from_repr(tiu!(domain)).unwrap();
     Ok(domain)
+}
+
+pub async fn get_apphash(conn: &mut SqliteConnection, id_election: u32) -> ZCVResult<Vec<u8>> {
+    let (apphash,): (Vec<u8>,) = query_as("SELECT apphash FROM elections WHERE id_election = ?1")
+        .bind(id_election)
+        .fetch_one(conn)
+        .await?;
+    Ok(apphash)
+}
+
+pub async fn store_apphash(conn: &mut SqliteConnection, id_election: u32, apphash: &[u8]) -> ZCVResult<()> {
+    query("UPDATE elections SET apphash = ?2 WHERE id_election = ?1")
+        .bind(id_election)
+        .bind(apphash)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
