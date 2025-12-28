@@ -16,8 +16,8 @@ impl ElectionPropsPub {
         let json = serde_json::to_string(self).anyhow()?;
         let (election,): (u32,) = query_as(
             "INSERT INTO elections
-            (hash, start, end, need_sig, name, data)
-            VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            (hash, apphash, start, end, need_sig, name, data)
+            VALUES (?, '', ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
             start = excluded.start,
             end = excluded.end,
             need_sig = excluded.need_sig,
