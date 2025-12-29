@@ -1,0 +1,24 @@
+{
+	"data": {
+		"version": 1,
+		"domain": "6994b598ab64357ff289d0bdbd9d67f897ef0b48c64c36ac9a58567ac0976912",
+		"actions": [
+			{
+				"cv_net": "427ecba49ddca12dcabc7dc141061f31a7d1a1bd9d8729b97a3515eee85fcc87",
+				"rk": "a285bf2fa2c0f5d63506191a911dcf39cfe1a5054d840dd7a6647603b5dd16b1",
+				"nf": "1f27107b3a1a686655bb98c159abe9a66f7997db969107050a9a0c89619f7507",
+				"cmx": "818fb8d0a54ae9bde3f60e667e2b655e88fda137337947a462baeb683a5a1e22",
+				"epk": "ec5940dbf128d6179a41bba5552cf452086f1563038f3979d740dbd332eefc96",
+				"enc": "2a75c3487e3372ecc4cc439969deb2cfba2a4645835a76b0af766ee29a3b80e15709b68e3f5a0d33d44f20d8f20c698e88e7c2d0"
+			}
+		],
+		"anchors": {
+			"nf": "",
+			"cmx": ""
+		}
+	},
+	"witnesses": {
+		"proofs": [],
+		"binding_signature": ""
+	}
+}

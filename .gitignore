@@ -3,3 +3,4 @@ build/
 orchard/
 *.code-workspace
 *.db
+*.tgz
