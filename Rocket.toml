@@ -10,4 +10,4 @@ cometrpc_port = 26657
 cometbft_port = 26658
 db_path = "vote.db"
 lwd_url = "https://zec.rocks"
-id_election = 1
+election = "8019E154751C1BEEE9E40AA77DA2AEE83447C6157A6CB2D29ED37F09220FDFD2"
