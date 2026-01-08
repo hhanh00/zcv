@@ -1,10 +1,10 @@
 use crate::{
     ZCVError, ZCVResult,
     context::Context,
-    db::{get_apphash, get_election, store_apphash},
+    db::{get_apphash, get_election, store_apphash, store_ballot},
     error::IntoAnyhow,
     server::rpc::submit_ballot,
-    vote_rpc::{Ballot, VoteMessage},
+    vote_rpc::VoteMessage,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
@@ -61,9 +61,8 @@ impl ServerState {
         })
     }
 
-    pub fn check_ballot(&mut self, ballot: Ballot) -> ZCVResult<()> {
-        let b: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
-        tracing::info!("check_ballot {}", serde_json::to_string(&b.data).unwrap());
+    pub fn check_ballot(&mut self, ballot: orchard::vote::Ballot) -> ZCVResult<()> {
+        tracing::info!("check_ballot {:?}", &ballot);
         // TODO: Verify ballot signature & zkp, no need to verify double-spend yet
         Ok(())
     }
@@ -92,6 +91,7 @@ impl Application for Server {
                 && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
             {
                 let mut state = self.state.lock();
+                let ballot: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
                 state.check_ballot(ballot)?;
             }
             Ok::<_, ZCVError>(())
@@ -144,7 +144,7 @@ impl Application for Server {
         } = request;
         tracing::info!("Hash {} height {height}", hex::encode(&hash));
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let mut state = self.state.lock();
+        let state = self.state.lock();
         let tx_results = rt
             .block_on(async move {
                 let mut conn = state.pool.acquire().await?;
@@ -156,19 +156,27 @@ impl Application for Server {
                     .key(&apphash)
                     .to_state();
                 let mut tx_results = vec![];
-                for mut tx in txs {
+                for (itx, mut tx) in txs.into_iter().enumerate() {
                     let tx_copy = tx.clone();
                     hasher.update(&tx_copy);
-                    let mut finalize = || {
+                    let finalize = async {
                         let msg = VoteMessage::decode(&mut tx)?;
                         if let Some(m) = msg.type_oneof
                             && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
                         {
-                            state.check_ballot(ballot)?;
+                            let ballot: orchard::vote::Ballot =
+                                serde_json::from_str(&ballot.ballot)?;
+                            store_ballot(
+                                &mut db_tx,
+                                state.start_height + height as u32,
+                                itx as u32,
+                                ballot,
+                            )
+                            .await?;
                         }
                         Ok::<_, ZCVError>(())
                     };
-                    let result = match finalize() {
+                    let result = match finalize.await {
                         Ok(_) => ExecTxResult {
                             code: 0,
                             ..ExecTxResult::default()
@@ -186,8 +194,6 @@ impl Application for Server {
                 let apphash = hasher.finalize().as_bytes().to_vec();
                 store_apphash(&mut db_tx, &state.domain, &apphash).await?;
 
-                // TODO
-                // store_ballot(&mut self.conn, self.height, b).await?;
                 db_tx.commit().await?;
                 Ok::<_, ZCVError>(tx_results)
             })
