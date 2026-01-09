@@ -107,6 +107,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+    // server / validator
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS results(
+        title TEXT PRIMARY KEY,
+        votes INTEGER NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -146,10 +154,10 @@ pub async fn get_ivks(
 
 pub async fn get_election(
     conn: &mut SqliteConnection,
-    domain: &[u8],
+    hash: &[u8],
 ) -> ZCVResult<ElectionPropsPub> {
     let (election,): (String,) = query_as("SELECT data FROM elections WHERE hash = ?1")
-        .bind(domain)
+        .bind(hash)
         .fetch_one(conn)
         .await
         .context("select election by hash")?;
@@ -175,9 +183,9 @@ pub async fn get_domain(
     Ok(domain)
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection, domain: &[u8]) -> ZCVResult<Vec<u8>> {
+pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Vec<u8>> {
     let (apphash,): (Vec<u8>,) = query_as("SELECT apphash FROM elections WHERE hash = ?1")
-        .bind(domain)
+        .bind(hash)
         .fetch_one(conn)
         .await?;
     Ok(apphash)
@@ -185,11 +193,11 @@ pub async fn get_apphash(conn: &mut SqliteConnection, domain: &[u8]) -> ZCVResul
 
 pub async fn store_apphash(
     conn: &mut SqliteConnection,
-    domain: &[u8],
+    hash: &[u8],
     apphash: &[u8],
 ) -> ZCVResult<()> {
     query("UPDATE elections SET apphash = ?2 WHERE hash = ?1")
-        .bind(domain)
+        .bind(hash)
         .bind(apphash)
         .execute(conn)
         .await?;
@@ -294,15 +302,16 @@ pub async fn store_ballot(
     Ok(())
 }
 
-pub async fn fetch_ballots(mut conn: SqliteConnection) -> impl Stream<Item = BallotData> {
-    let (tx, rx) = mpsc::channel::<BallotData>(1);
+pub async fn fetch_ballots(mut conn: SqliteConnection) -> impl Stream<Item = (u32, BallotData)> {
+    let (tx, rx) = mpsc::channel::<(u32, BallotData)>(1);
     tokio::spawn(async move {
-        let s = query("SELECT data FROM ballots ORDER BY height, itx").fetch(&mut conn);
+        let s = query("SELECT question, data FROM ballots ORDER BY height, itx").fetch(&mut conn);
         s.for_each(async |r| {
             if let Ok(r) = r {
-                let data: String = r.get(0);
+                let question: u32 = r.get(0);
+                let data: String = r.get(1);
                 let ballot_data: BallotData = serde_json::from_str(&data).unwrap();
-                let _ = tx.send(ballot_data).await;
+                let _ = tx.send((question, ballot_data)).await;
             }
         })
         .await;
@@ -315,7 +324,7 @@ pub async fn fetch_ballots(mut conn: SqliteConnection) -> impl Stream<Item = Bal
 mod tests {
     use crate::{
         db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot},
-        tests::{TEST_ELECTION_DOMAIN, get_connection, test_setup},
+        tests::{get_connection, test_election_hash, test_setup},
     };
     use anyhow::Result;
     use ff::PrimeField;
@@ -356,11 +365,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_ballot() -> Result<()> {
-        let domain = hex::decode(TEST_ELECTION_DOMAIN)?;
+        let hash = test_election_hash();
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         query("DELETE FROM ballots").execute(&mut *conn).await?;
-        let election = get_election(&mut conn, &domain).await?;
+        let election = get_election(&mut conn, &hash).await?;
         let domain = get_domain(&mut conn, 1, 1).await?;
         let dummy_ballot = Ballot {
             data: BallotData {
@@ -387,7 +396,7 @@ mod tests {
         let mut count_ballot2 = 0u32;
         let conn = conn.detach();
         let mut rx = fetch_ballots(conn).await;
-        while let Some(ballot_data) = rx.next().await {
+        while let Some((_, ballot_data)) = rx.next().await {
             let h = ballot_data.sighash()?;
             assert_eq!(hex::encode(&h), "aaf7c9385268beb9e936451d25b4327aa79d2c3239cd2f894bbb50eeccd44d42");
             count_ballot2 += 1;

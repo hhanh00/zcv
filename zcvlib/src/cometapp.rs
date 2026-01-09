@@ -11,8 +11,8 @@ pub async fn main() -> Result<()> {
     let cometbft_port: u16 = config.extract_inner("custom.cometbft_port")?;
     let db_path: String = config.extract_inner("custom.db_path")?;
     let lwd_url: String = config.extract_inner("custom.lwd_url")?;
-    let domain: String = config.extract_inner("custom.election")?;
-    let domain = hex::decode(&domain)?;
+    let hash: String = config.extract_inner("custom.election")?;
+    let hash = hex::decode(&hash)?;
     let context = Context::new(&db_path, &lwd_url).await?;
     let context2 = context.clone();
 
@@ -22,7 +22,7 @@ pub async fn main() -> Result<()> {
             .build()
             .unwrap();
         r.block_on(async move {
-            run_cometbft_app(&context2, &domain, cometbft_port).await.unwrap();
+            run_cometbft_app(&context2, &hash, cometbft_port).await.unwrap();
             Ok::<_, ZCVError>(())
         })
     });

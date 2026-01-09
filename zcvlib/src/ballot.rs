@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use ff::PrimeField;
+use futures::StreamExt;
 use orchard::{
     Address,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
@@ -6,13 +9,14 @@ use orchard::{
 };
 use pasta_curves::Fp;
 use rand_core::{CryptoRng, RngCore};
-use sqlx::SqliteConnection;
-use zcash_protocol::consensus::Network;
+use sqlx::{SqliteConnection, SqlitePool, query, query_as};
+use zcash_protocol::consensus::{Network, NetworkConstants};
 
 use crate::{
     ZCVError, ZCVResult,
     balance::list_unspent_notes,
-    db::{get_ivks, get_question, store_received_note},
+    db::{fetch_ballots, get_election, get_ivks, get_question, store_received_note},
+    election::derive_question_sk,
     error::IntoAnyhow,
     tiu,
 };
@@ -98,6 +102,64 @@ pub async fn decrypt_ballot_data(
     Ok(())
 }
 
+pub async fn tally_ballots(
+    network: &Network,
+    pool: SqlitePool,
+    election_seed: &str,
+    hash: &[u8],
+) -> ZCVResult<()> {
+    let mut conn = pool.acquire().await?;
+    let domains: Vec<(u32, Vec<u8>)> = query_as("SELECT id_question, domain FROM questions q
+    JOIN elections e ON q.election = e.id_election
+    WHERE e.hash = ?1 ORDER BY idx")
+    .bind(hash)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut ivks: HashMap<u32, PreparedIncomingViewingKey> = HashMap::new();
+    for (id_question, domain) in domains {
+        let domain = Fp::from_repr(tiu!(domain)).unwrap();
+        let spk = derive_question_sk(election_seed, network.coin_type(), domain)?;
+        let fvk = FullViewingKey::from(&spk);
+        let ivk = fvk.to_ivk(Scope::External);
+        let pivk = PreparedIncomingViewingKey::new(&ivk);
+        ivks.insert(id_question, pivk);
+    }
+    let election = get_election(&mut conn, hash).await?;
+    let mut addresses: HashMap<Vec<u8>, String> = HashMap::new();
+    for (iq, q) in election.questions.iter().enumerate() {
+        for (ia, a) in q.answers.iter().enumerate() {
+            let (_, address) = bech32::decode(&a.address).anyhow()?;
+            let title = format!("{}.{}", iq + 1, ia + 1);
+            addresses.insert(address, title);
+        }
+    }
+
+    let mut ballots = fetch_ballots(conn.detach()).await;
+
+    let mut conn = pool.acquire().await?;
+    while let Some((question, ballot_data)) = ballots.next().await {
+        let pivk = &ivks[&question];
+        for action in ballot_data.actions.iter() {
+            if let Some(note) = try_decrypt_ballot(pivk, action)? {
+                let recipient = note.recipient().to_raw_address_bytes();
+                if let Some(title) = addresses.get(recipient.as_slice()) {
+                    query(
+                        "INSERT INTO results(title, count)
+                    VALUES (?1, ?2) ON CONFLICT DO UPDATE SET
+                    count = excluded.count + count",
+                    )
+                    .bind(title)
+                    .bind(note.value().inner() as i64)
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
@@ -109,11 +171,14 @@ mod tests {
     use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
 
     use crate::{
-        ballot::encrypt_ballot_data,
+        ballot::{encrypt_ballot_data, tally_ballots},
         db::get_domain,
         election::derive_question_sk,
         error::IntoAnyhow,
-        tests::{TEST_ELECTION_SEED, get_connection, run_scan, test_setup},
+        tests::{
+            TEST_ELECTION_SEED, get_connection, run_scan, test_context,
+            test_election_hash, test_setup,
+        },
     };
 
     #[tokio::test]
@@ -138,6 +203,17 @@ mod tests {
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
         let n = try_decrypt_ballot(&ivk, &ballot.actions[0])?;
         assert!(n.is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_tally_ballots() -> Result<()> {
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        let ctxt = test_context().await?;
+        let pool = ctxt.pool.clone();
+        let hash = test_election_hash();
+        tally_ballots(&Network::MainNetwork, pool, TEST_ELECTION_SEED, &hash).await?;
         Ok(())
     }
 }
