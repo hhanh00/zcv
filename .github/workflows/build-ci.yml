@@ -18,5 +18,24 @@ jobs:
         uses: actions/checkout@v4
       - name: Build
         run: |
-          cargo build
+          curl -Lo cometbft.tgz https://github.com/cometbft/cometbft/releases/download/v1.0.1/cometbft_1.0.1_linux_arm64.tar.gz
+          tar xvf cometbft.tgz
+          ./cometbft init
+          cargo build -r
           cargo test
+          cp zcvlib/vote.db .
+          ./cometbft start &
+          echo "COMETBFT_PID=$!" >> $GITHUB_ENV
+          ./target/release/vote-cometbft &
+          echo "APP_PID=$!" >> $GITHUB_ENV
+          sleep 3
+          curl -d @tests/ballot1.json -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
+          curl -d @tests/ballot2.json -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
+      - name: Cleanup
+        run: |
+          kill -9 $COMETBFT_PID
+          kill -9 $APP_PID
+      - name: Check for 2 ballots
+        run: |
+          export COUNT=$(sqlite3 vote.db "SELECT COUNT(*) FROM ballots")
+          [ "$COUNT" -eq 3 ]
