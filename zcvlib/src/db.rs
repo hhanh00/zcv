@@ -1,13 +1,17 @@
 use anyhow::Context;
 use bip39::Mnemonic;
 use ff::PrimeField;
+use futures::Stream;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
-    vote::Ballot,
+    vote::{Ballot, BallotData},
 };
 use pasta_curves::Fp;
-use sqlx::{SqliteConnection, query, query_as};
+use rocket::futures::StreamExt;
+use sqlx::{Row, SqliteConnection, query, query_as};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -290,14 +294,32 @@ pub async fn store_ballot(
     Ok(())
 }
 
+pub async fn fetch_ballots(mut conn: SqliteConnection) -> impl Stream<Item = BallotData> {
+    let (tx, rx) = mpsc::channel::<BallotData>(1);
+    tokio::spawn(async move {
+        let s = query("SELECT data FROM ballots ORDER BY height, itx").fetch(&mut conn);
+        s.for_each(async |r| {
+            if let Ok(r) = r {
+                let data: String = r.get(0);
+                let ballot_data: BallotData = serde_json::from_str(&data).unwrap();
+                let _ = tx.send(ballot_data).await;
+            }
+        })
+        .await;
+    });
+
+    Box::pin(ReceiverStream::new(rx))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::{get_domain, get_election, set_account_seed, store_ballot},
+        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot},
         tests::{TEST_ELECTION_DOMAIN, get_connection, test_setup},
     };
     use anyhow::Result;
     use ff::PrimeField;
+    use futures::StreamExt;
     use orchard::vote::{Ballot, BallotAnchors, BallotData, BallotWitnesses};
     use sqlx::{query, query_as};
 
@@ -361,6 +383,16 @@ mod tests {
             .fetch_one(&mut *conn)
             .await?;
         assert_eq!(count_ballot, 1);
+
+        let mut count_ballot2 = 0u32;
+        let conn = conn.detach();
+        let mut rx = fetch_ballots(conn).await;
+        while let Some(ballot_data) = rx.next().await {
+            let h = ballot_data.sighash()?;
+            assert_eq!(hex::encode(&h), "aaf7c9385268beb9e936451d25b4327aa79d2c3239cd2f894bbb50eeccd44d42");
+            count_ballot2 += 1;
+        }
+        assert_eq!(count_ballot, count_ballot2);
         Ok(())
     }
 }

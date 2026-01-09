@@ -33,6 +33,7 @@ serial_test = "3.2.0"
 tendermint = "0.40.1"
 tendermint-abci = {version = "0.40.1", features = ["client"]}
 tendermint-proto = "0.40.1"
+tokio-stream = "0.1"
 thiserror = "2"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
