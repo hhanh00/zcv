@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
 
 use crate::ZCVResult;
@@ -22,6 +24,7 @@ impl Context {
         Self::init_logger();
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
+            .busy_timeout(Duration::from_mins(1))
             .filename(db_path);
         let pool = SqlitePool::connect_with(connect_options).await?;
         Ok(Context {
