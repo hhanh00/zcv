@@ -35,7 +35,8 @@ jobs:
         run: |
           kill -9 $COMETBFT_PID
           kill -9 $APP_PID
-      - name: Check for 2 ballots
+      - name: Check for ballots
         run: |
           export COUNT=$(sqlite3 vote.db "SELECT COUNT(*) FROM ballots")
-          [ "$COUNT" -eq 3 ]
+          echo $COUNT
+          [ "$COUNT" -eq 4 ]
