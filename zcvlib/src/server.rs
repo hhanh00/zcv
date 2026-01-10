@@ -35,8 +35,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool, domain: &[u8]) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, domain).await?;
+    pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
+        let server = ServerState::new(pool, hash).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -45,18 +45,18 @@ impl Server {
 
 pub struct ServerState {
     pub pool: SqlitePool,
-    pub domain: Vec<u8>,
+    pub hash: Vec<u8>,
     pub start_height: u32,
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool, domain: &[u8]) -> ZCVResult<Self> {
+    pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
-        let e = get_election(&mut conn, domain).await?;
+        let e = get_election(&mut conn, hash).await?;
 
         Ok(Self {
             pool,
-            domain: domain.to_vec(),
+            hash: hash.to_vec(),
             start_height: e.end,
         })
     }
@@ -149,7 +149,7 @@ impl Application for Server {
             .block_on(async move {
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
-                let apphash = get_apphash(&mut db_tx, &state.domain).await?;
+                let apphash = get_apphash(&mut db_tx, &state.hash).await?;
                 let mut hasher = Params::new()
                     .personal(b"ZCVote___AppHash")
                     .hash_length(32)
@@ -192,7 +192,7 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, &state.domain, &apphash).await?;
+                store_apphash(&mut db_tx, &state.hash, &apphash).await?;
 
                 db_tx.commit().await?;
                 Ok::<_, ZCVError>(tx_results)
@@ -227,8 +227,8 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub async fn run_cometbft_app(context: &Context, domain: &[u8], port: u16) -> ZCVResult<()> {
-    let app = Server::new(context.pool.clone(), domain).await?;
+pub async fn run_cometbft_app(context: &Context, hash: &[u8], port: u16) -> ZCVResult<()> {
+    let app = Server::new(context.pool.clone(), hash).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;
