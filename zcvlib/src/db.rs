@@ -1,7 +1,6 @@
 use anyhow::Context;
 use bip39::Mnemonic;
 use ff::PrimeField;
-use futures::Stream;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
@@ -10,8 +9,6 @@ use orchard::{
 use pasta_curves::Fp;
 use rocket::futures::StreamExt;
 use sqlx::{Row, SqliteConnection, query, query_as};
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -110,7 +107,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     // server / validator
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS results(
-        title TEXT PRIMARY KEY,
+        question_ref TEXT PRIMARY KEY,
         votes INTEGER NOT NULL)",
     )
     .execute(&mut *conn)
@@ -152,10 +149,7 @@ pub async fn get_ivks(
     Ok((fvk, ivks.0, ivks.1))
 }
 
-pub async fn get_election(
-    conn: &mut SqliteConnection,
-    hash: &[u8],
-) -> ZCVResult<ElectionPropsPub> {
+pub async fn get_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<ElectionPropsPub> {
     let (election,): (String,) = query_as("SELECT data FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
@@ -302,33 +296,29 @@ pub async fn store_ballot(
     Ok(())
 }
 
-pub async fn fetch_ballots(mut conn: SqliteConnection) -> impl Stream<Item = (u32, BallotData)> {
-    let (tx, rx) = mpsc::channel::<(u32, BallotData)>(1);
-    tokio::spawn(async move {
-        let s = query("SELECT question, data FROM ballots ORDER BY height, itx").fetch(&mut conn);
-        s.for_each(async |r| {
-            if let Ok(r) = r {
-                let question: u32 = r.get(0);
-                let data: String = r.get(1);
-                let ballot_data: BallotData = serde_json::from_str(&data).unwrap();
-                let _ = tx.send((question, ballot_data)).await;
-            }
-        })
-        .await;
-    });
-
-    Box::pin(ReceiverStream::new(rx))
+pub async fn fetch_ballots(
+    conn: &mut SqliteConnection,
+    mut handler: impl AsyncFnMut(u32, BallotData) -> ZCVResult<()>,
+) -> ZCVResult<()> {
+    let mut s = query("SELECT question, data FROM ballots ORDER BY height, itx").fetch(conn);
+    while let Some(r) = s.next().await {
+        if let Ok(r) = r {
+            let question: u32 = r.get(0);
+            let data: String = r.get(1);
+            let ballot_data: BallotData = serde_json::from_str(&data).unwrap();
+            handler(question, ballot_data).await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot},
-        tests::{get_connection, test_election_hash, test_setup},
+        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot}, error::IntoAnyhow, tests::{get_connection, test_election_hash, test_setup}
     };
     use anyhow::Result;
     use ff::PrimeField;
-    use futures::StreamExt;
     use orchard::vote::{Ballot, BallotAnchors, BallotData, BallotWitnesses};
     use sqlx::{query, query_as};
 
@@ -394,13 +384,16 @@ mod tests {
         assert_eq!(count_ballot, 1);
 
         let mut count_ballot2 = 0u32;
-        let conn = conn.detach();
-        let mut rx = fetch_ballots(conn).await;
-        while let Some((_, ballot_data)) = rx.next().await {
-            let h = ballot_data.sighash()?;
-            assert_eq!(hex::encode(&h), "aaf7c9385268beb9e936451d25b4327aa79d2c3239cd2f894bbb50eeccd44d42");
+        fetch_ballots(&mut conn, async |_, ballot_data| {
+            let h = ballot_data.sighash().anyhow()?;
+            assert_eq!(
+                hex::encode(&h),
+                "aaf7c9385268beb9e936451d25b4327aa79d2c3239cd2f894bbb50eeccd44d42"
+            );
             count_ballot2 += 1;
-        }
+            Ok(())
+        })
+        .await?;
         assert_eq!(count_ballot, count_ballot2);
         Ok(())
     }

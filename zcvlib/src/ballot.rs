@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use ff::PrimeField;
-use futures::StreamExt;
 use orchard::{
     Address,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
@@ -109,9 +108,11 @@ pub async fn tally_ballots(
     hash: &[u8],
 ) -> ZCVResult<()> {
     let mut conn = pool.acquire().await?;
-    let domains: Vec<(u32, Vec<u8>)> = query_as("SELECT id_question, domain FROM questions q
+    let domains: Vec<(u32, Vec<u8>)> = query_as(
+        "SELECT id_question, domain FROM questions q
     JOIN elections e ON q.election = e.id_election
-    WHERE e.hash = ?1 ORDER BY idx")
+    WHERE e.hash = ?1 ORDER BY idx",
+    )
     .bind(hash)
     .fetch_all(&mut *conn)
     .await?;
@@ -129,33 +130,38 @@ pub async fn tally_ballots(
     for (iq, q) in election.questions.iter().enumerate() {
         for (ia, a) in q.answers.iter().enumerate() {
             let (_, address) = bech32::decode(&a.address).anyhow()?;
-            let title = format!("{}.{}", iq + 1, ia + 1);
-            addresses.insert(address, title);
+            let question_ref = format!("{}.{}", iq + 1, ia + 1);
+            addresses.insert(address, question_ref);
         }
     }
 
-    let mut ballots = fetch_ballots(conn.detach()).await;
-
-    let mut conn = pool.acquire().await?;
-    while let Some((question, ballot_data)) = ballots.next().await {
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    fetch_ballots(&mut conn, async |question, ballot_data| {
         let pivk = &ivks[&question];
         for action in ballot_data.actions.iter() {
             if let Some(note) = try_decrypt_ballot(pivk, action)? {
                 let recipient = note.recipient().to_raw_address_bytes();
-                if let Some(title) = addresses.get(recipient.as_slice()) {
-                    query(
-                        "INSERT INTO results(title, count)
-                    VALUES (?1, ?2) ON CONFLICT DO UPDATE SET
-                    count = excluded.count + count",
-                    )
-                    .bind(title)
-                    .bind(note.value().inner() as i64)
-                    .execute(&mut *conn)
-                    .await
-                    .unwrap();
+                if let Some(question_ref) = addresses.get(recipient.as_slice()) {
+                    let c = counts.entry(question_ref.clone()).or_insert(0);
+                    *c += note.value().inner();
                 }
             }
         }
+        Ok(())
+    })
+    .await?;
+
+    for (question_ref, count) in counts {
+        tracing::info!("{question_ref} {count}");
+        query(
+            "INSERT INTO results(question_ref, count)
+        VALUES (?1, ?2) ON CONFLICT DO UPDATE SET
+        count = excluded.count + count",
+        )
+        .bind(&question_ref)
+        .bind(count as i64)
+        .execute(&mut *conn)
+        .await?;
     }
     Ok(())
 }
@@ -176,8 +182,8 @@ mod tests {
         election::derive_question_sk,
         error::IntoAnyhow,
         tests::{
-            TEST_ELECTION_SEED, get_connection, run_scan, test_context,
-            test_election_hash, test_setup,
+            TEST_ELECTION_SEED, get_connection, run_scan, test_context, test_election_hash,
+            test_setup,
         },
     };
 
