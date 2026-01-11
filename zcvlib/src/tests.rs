@@ -31,7 +31,7 @@ pub async fn test_ballot(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<B
         conn,
         domain,
         1, /* answer index */
-        135_000,
+        13_500_000_000_000,
         OsRng,
     )
     .await?;

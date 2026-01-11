@@ -226,6 +226,10 @@ mod tests {
             .bind(domain.to_repr().as_slice())
             .fetch_one(&mut *conn)
             .await?;
+        query("UPDATE notes SET value = value * 100000000")
+        .execute(&mut *conn).await?;
+        query("UPDATE spends SET value = value * 100000000")
+        .execute(&mut *conn).await?;
         let ballot = test_ballot(&mut conn, domain).await?;
         for itx in 0..2 {
             query(
@@ -242,7 +246,11 @@ mod tests {
         let (votes,): (i64,) = query_as("SELECT votes FROM results WHERE question_ref = '2.2'")
             .fetch_one(&mut *conn)
             .await?;
-        assert_eq!(votes, 270_000); // 2 ballots of 135_000
+        assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000
+        query("UPDATE notes SET value = value / 100000000")
+        .execute(&mut *conn).await?;
+        query("UPDATE spends SET value = value / 100000000")
+        .execute(&mut *conn).await?;
         Ok(())
     }
 }
