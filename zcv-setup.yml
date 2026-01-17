@@ -1,0 +1,13 @@
+chainid: zcash-vote-y3DFf
+authkey: tskey-auth-kCSobEpLAB11CNTRL-WGtn27HVTJAYbaj2SgZzHA74DF81FiVi
+uid: 1000
+nodes:
+  - name: node1
+    port: 8000
+  - name: node2
+    port: 8000
+  - name: node3
+    port: 8000
+datadir: data
+workdir: work
+port: 9000
