@@ -13,6 +13,13 @@ sqlx = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
+redact = { workspace = true }
+
+warp = {version = "0.4", features = ["server", "websocket"]}
+clap = {version = "4.5", features = ["derive"]}
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }

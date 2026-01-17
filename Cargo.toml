@@ -42,6 +42,7 @@ zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
 zip32 = "0.2"
+redact = {version = "0.1", features = ["serde"]}
 
 [workspace.dependencies.hex]
 features = ["serde"]
