@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "zcash-server-docker-v*.*.*"
+      - "zcv-docker-v*.*.*"
 
 jobs:
   docker:
