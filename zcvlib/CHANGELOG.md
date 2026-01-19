@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.2.0...zcvlib-v0.3.0) (2026-01-19)
+
+
+### Features
+
+* apphash calculation ([#44](https://github.com/hhanh00/zcv/issues/44)) ([a99daaa](https://github.com/hhanh00/zcv/commit/a99daaa4944978f8dbbf4b5479295f1d945b99de))
+* fetch ballots fn ([#48](https://github.com/hhanh00/zcv/issues/48)) ([1125768](https://github.com/hhanh00/zcv/commit/1125768660d3fdb488a645781d5c165200725c8b))
+* fetch ballots fn ([#49](https://github.com/hhanh00/zcv/issues/49)) ([217cf60](https://github.com/hhanh00/zcv/commit/217cf6002e2e531b5c595c503e1e9f886c663536))
+* store ballot in finalize_block ([#46](https://github.com/hhanh00/zcv/issues/46)) ([daf76af](https://github.com/hhanh00/zcv/commit/daf76afc6fe3d7287aa65e7d52447776c0676cc1))
+* submit ballot through cometbft ([#42](https://github.com/hhanh00/zcv/issues/42)) ([0d7d7c4](https://github.com/hhanh00/zcv/commit/0d7d7c4ce083abbff48a00c701a59343a990e297))
+* submit_ballot rpc ([#40](https://github.com/hhanh00/zcv/issues/40)) ([379e047](https://github.com/hhanh00/zcv/commit/379e0473d41a61745c1f0d3ea9e2c8c16db2d0f6))
+* tally election ballots test ([#52](https://github.com/hhanh00/zcv/issues/52)) ([bbd6fb9](https://github.com/hhanh00/zcv/commit/bbd6fb92527798bbbfb80bafafab195d1acf9df6))
+* tally votes ([#50](https://github.com/hhanh00/zcv/issues/50)) ([869c946](https://github.com/hhanh00/zcv/commit/869c946a9e43007611b2b13a35b4c654d356167d))
+* test for ballots with large amounts ([#53](https://github.com/hhanh00/zcv/issues/53)) ([b59866c](https://github.com/hhanh00/zcv/commit/b59866c6fefc4a04cfd03732909945486c5a982a))
+* test for ballots with large amounts ([#54](https://github.com/hhanh00/zcv/issues/54)) ([0ff936b](https://github.com/hhanh00/zcv/commit/0ff936b51e40924b25b05b80a8018e2a78333b52))
+
+
+### Bug Fixes
+
+* fetch_ballot with callback instead of returning stream ([#51](https://github.com/hhanh00/zcv/issues/51)) ([3b5594a](https://github.com/hhanh00/zcv/commit/3b5594a9ef4ec3a11963d2cf4bd85759306e281a))
+* typo ([#43](https://github.com/hhanh00/zcv/issues/43)) ([3ae83e3](https://github.com/hhanh00/zcv/commit/3ae83e3dc9fd1bda5379bc39a9817efc0b445185))
+* use domain hash for db lookups instead of id ([#45](https://github.com/hhanh00/zcv/issues/45)) ([6580454](https://github.com/hhanh00/zcv/commit/65804548b350aed916b3c97619999f033e727bb3))
+
 ## [0.2.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.1.0...zcvlib-v0.2.0) (2025-12-26)
 
 
