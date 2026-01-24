@@ -604,6 +604,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
+ "rand_core 0.6.4",
  "typenum",
 ]
 
@@ -2077,7 +2078,7 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=43e3d650759c395424202bb59e7b27e7786eeef3#43e3d650759c395424202bb59e7b27e7786eeef3"
+source = "git+https://github.com/hhanh00/orchard.git?rev=ae6e63a1da6407810bf11b0e427a4b66d67e707f#ae6e63a1da6407810bf11b0e427a4b66d67e707f"
 dependencies = [
  "aes",
  "bitvec",
@@ -4721,6 +4722,7 @@ dependencies = [
  "bincode",
  "bip39",
  "blake2b_simd",
+ "chacha20poly1305",
  "ff",
  "futures",
  "hex",

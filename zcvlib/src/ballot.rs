@@ -13,7 +13,13 @@ use sqlx::{SqliteConnection, query, query_as};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 
 use crate::{
-    ZCVError, ZCVResult, balance::list_unspent_notes, db::{fetch_ballots, get_ivks, store_received_note}, election::derive_question_sk, error::IntoAnyhow, pod::ZCV_HRP, tiu
+    ZCVError, ZCVResult,
+    balance::list_unspent_notes,
+    db::{fetch_ballots, get_ivks, store_received_note},
+    election::derive_question_sk,
+    error::IntoAnyhow,
+    pod::ZCV_HRP,
+    tiu,
 };
 
 pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
@@ -21,7 +27,7 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     conn: &mut SqliteConnection,
     domain: Fp,
     address: &str,
-    _memo: &[u8],
+    memo: &[u8],
     amount: u64,
     mut rng: R,
 ) -> ZCVResult<BallotData> {
@@ -48,8 +54,15 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     for spend in spends {
         let spend = spend.to_note(&fvk);
         let spend_amount = a.min(spend.value().inner());
-        let (action, _, _) =
-            encrypt_ballot_action(domain, fvk.clone(), &spend, recipient, a, &mut rng)?;
+        let (action, _, _) = encrypt_ballot_action(
+            domain,
+            fvk.clone(),
+            &spend,
+            recipient,
+            a,
+            memo,
+            &mut rng,
+        )?;
         a -= spend_amount;
         actions.push(action);
     }
@@ -78,7 +91,7 @@ pub async fn decrypt_ballot_data(
 ) -> ZCVResult<()> {
     let ivk = fvk.to_ivk(Scope::External);
     let ivk = PreparedIncomingViewingKey::new(&ivk);
-    for (i, action) in ballot.actions.iter().enumerate() {
+    for (i, action) in ballot.actions.into_iter().enumerate() {
         if let Some(note) = try_decrypt_ballot(&ivk, action)? {
             store_received_note(
                 conn,
@@ -118,8 +131,11 @@ pub async fn tally_ballots(
         let ivk = fvk.to_ivk(Scope::External);
         let pivk = PreparedIncomingViewingKey::new(&ivk);
         let address2 = fvk.address_at(0u64, Scope::External);
-        let address2 =
-            bech32::encode::<Bech32m>(Hrp::parse(ZCV_HRP).unwrap(), &address2.to_raw_address_bytes()).anyhow()?;
+        let address2 = bech32::encode::<Bech32m>(
+            Hrp::parse(ZCV_HRP).unwrap(),
+            &address2.to_raw_address_bytes(),
+        )
+        .anyhow()?;
         assert_eq!(address, address2);
         ivks.insert(idx, pivk);
     }
@@ -127,7 +143,7 @@ pub async fn tally_ballots(
     let mut counts = vec![];
     fetch_ballots(conn, async |question, ballot_data| {
         let pivk = &ivks[&question];
-        for action in ballot_data.actions.iter() {
+        for action in ballot_data.actions.into_iter() {
             if let Some(note) = try_decrypt_ballot(pivk, action)? {
                 let votes = note.value().inner();
                 // TODO: Decrypt memo and parse answer
@@ -194,7 +210,8 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        let (domain, address) = get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
+        let (domain, address) =
+            get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
         let ballot = encrypt_ballot_data(
             &Network::MainNetwork,
             &mut conn,
@@ -209,7 +226,7 @@ mod tests {
             derive_question_sk(TEST_ELECTION_SEED, MainNetwork.coin_type(), domain).anyhow()?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
-        let n = try_decrypt_ballot(&ivk, &ballot.actions[0])?;
+        let n = try_decrypt_ballot(&ivk, ballot.actions[0].clone())?;
         assert!(n.is_some());
         Ok(())
     }
@@ -226,9 +243,11 @@ mod tests {
         let (domain, address) = get_domain(&mut tx, TEST_ELECTION_HASH, 1).await?;
         let question = get_question(&mut tx, domain).await?;
         query("UPDATE notes SET value = value * 100000000")
-        .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         query("UPDATE spends SET value = value * 100000000")
-        .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         let ballot = test_ballot(&mut tx, domain, &address).await?;
         for itx in 0..2 {
             query(
@@ -241,16 +260,25 @@ mod tests {
             .execute(&mut *tx)
             .await?;
         }
-        tally_ballots(&Network::MainNetwork, &mut tx, TEST_ELECTION_SEED, TEST_ELECTION_HASH).await?;
+        tally_ballots(
+            &Network::MainNetwork,
+            &mut tx,
+            TEST_ELECTION_SEED,
+            TEST_ELECTION_HASH,
+        )
+        .await?;
         // TODO: Fix test when parsing ballot memos is implemented
-        let (votes,): (i64,) = query_as("SELECT votes FROM results WHERE question = 1 and answer = 0")
-            .fetch_one(&mut *tx)
-            .await?;
+        let (votes,): (i64,) =
+            query_as("SELECT votes FROM results WHERE question = 1 and answer = 0")
+                .fetch_one(&mut *tx)
+                .await?;
         assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000
         query("UPDATE notes SET value = value / 100000000")
-        .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
         query("UPDATE spends SET value = value / 100000000")
-        .execute(&mut *tx).await?;
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(())
