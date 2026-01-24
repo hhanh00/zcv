@@ -46,7 +46,9 @@ pub struct ElectionPropsPub {
 pub struct QuestionPropPub {
     pub title: String,
     pub subtitle: String,
-    pub answers: Vec<AnswerPub>,
+    pub index: usize,
+    pub address: String,
+    pub answers: Vec<String>,
 }
 
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
@@ -57,13 +59,8 @@ pub struct QuestionPropHashable {
     pub name: String,
     pub title: String,
     pub subtitle: String,
+    pub index: usize,
     pub answers: Vec<String>,
-}
-
-#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
-pub struct AnswerPub {
-    pub value: String,
-    pub address: String,
 }
 
 pub const ZCV_HRP: &str = "zcv";
@@ -81,7 +78,7 @@ impl ElectionProps {
         let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
 
         let mut questions_pub = vec![];
-        for q in questions.into_iter() {
+        for (iq, q) in questions.into_iter().enumerate() {
             let QuestionProp {
                 title,
                 subtitle,
@@ -95,7 +92,8 @@ impl ElectionProps {
                 name: name.clone(),
                 title,
                 subtitle,
-                answers,
+                index: iq,
+                answers: answers.clone(),
             };
             let domain = q.calculate_domain()?;
 
@@ -106,19 +104,17 @@ impl ElectionProps {
             )
             .anyhow()?;
 
-            let mut answers_pub = vec![];
-            for (i, a) in q.answers.into_iter().enumerate() {
-                let vk = FullViewingKey::from(&sk);
-                let address = vk.address_at(i, Scope::External);
-                let address =
-                    bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
-                answers_pub.push(AnswerPub { value: a, address });
-            }
+            let vk = FullViewingKey::from(&sk);
+            let address = vk.address_at(0u64, Scope::External);
+            let address =
+                bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
 
             questions_pub.push(QuestionPropPub {
                 title: q.title,
                 subtitle: q.subtitle,
-                answers: answers_pub,
+                index: iq,
+                address,
+                answers,
             });
         }
         Ok(ElectionPropsPub {
@@ -148,7 +144,8 @@ impl QuestionPropPub {
             name: e.name.clone(),
             title: self.title.clone(),
             subtitle: self.subtitle.clone(),
-            answers: self.answers.iter().map(|a| a.value.clone()).collect(),
+            index: self.index,
+            answers: self.answers.clone(),
         };
         q.calculate_domain()
     }
@@ -163,10 +160,6 @@ impl ElectionPropsPub {
         for q in self.questions.iter() {
             let domain = q.domain(self)?;
             hasher.update(domain.to_repr().as_slice());
-            for a in q.answers.iter() {
-                let (_, address) = bech32::decode(&a.address).anyhow()?;
-                hasher.update(&address);
-            }
         }
         let h: [u8; 32] = tiu!(hasher.finalize().as_bytes());
         Ok(h)
@@ -248,7 +241,7 @@ mod tests {
         let hash = epub.hash().unwrap();
         assert_eq!(
             hash,
-            *hex::decode("b704f7ee08142e16bc9ee906f4cf21bbbd8a35a7ea1ab8762ceffe1c0075531f")
+            *hex::decode("8e3fbdd6b559040f6d6d0da90ca75605c0c6f8acd96570b00b8ff9475244e7e1")
                 .unwrap()
         );
     }

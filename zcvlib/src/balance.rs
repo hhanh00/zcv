@@ -53,7 +53,7 @@ mod tests {
     use anyhow::Result;
 
     use crate::{
-        balance::get_balance, db::get_domain, tests::{get_connection, run_scan, test_setup}
+        balance::get_balance, db::get_domain, tests::{TEST_ELECTION_HASH, get_connection, run_scan, test_setup}
     };
 
     #[tokio::test]
@@ -62,7 +62,7 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        let domain = get_domain(&mut conn, 1, 2).await?;
+        let (domain, _) = get_domain(&mut conn, TEST_ELECTION_HASH, 2).await?;
         let balance = get_balance(&mut conn, domain).await?;
         assert_eq!(balance, 1169078);
         Ok(())

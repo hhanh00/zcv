@@ -39,4 +39,4 @@ jobs:
         run: |
           export COUNT=$(sqlite3 vote.db "SELECT COUNT(*) FROM ballots")
           echo $COUNT
-          [ "$COUNT" -eq 4 ]
+          [ "$COUNT" -eq 2 ]

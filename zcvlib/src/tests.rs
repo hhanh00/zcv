@@ -5,6 +5,7 @@ use rand_core::OsRng;
 use serde_json::json;
 use sqlx::{SqliteConnection, pool::PoolConnection, query_as};
 use zcash_protocol::consensus::Network;
+use hex_literal::hex;
 
 use crate::{
     ZCVResult, ballot::encrypt_ballot_data, context::Context, db::{create_schema, set_account_seed}, lwd::{connect, scan_blocks}, pod::ElectionProps
@@ -13,24 +14,21 @@ use crate::{
 pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
-pub const TEST_ELECTION_HASH: &str =
-    "8019E154751C1BEEE9E40AA77DA2AEE83447C6157A6CB2D29ED37F09220FDFD2";
+pub const TEST_ELECTION_HASH: &[u8] =
+    &hex!("3A1ECEBCB20EABF35941C08717ECDAE080CA3F20279BD2BD8C757E74C82F8359");
 
 pub async fn test_context() -> Result<Context> {
     let ctx = Context::new("vote.db", "").await?;
     Ok(ctx)
 }
 
-pub fn test_election_hash() -> Vec<u8> {
-    hex::decode(TEST_ELECTION_HASH).unwrap()
-}
-
-pub async fn test_ballot(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<BallotData> {
+pub async fn test_ballot(conn: &mut SqliteConnection, domain: Fp, address: &str) -> ZCVResult<BallotData> {
     let ballot = encrypt_ballot_data(
         &Network::MainNetwork,
         conn,
         domain,
-        1, /* answer index */
+        address,
+        &[], /* answer */
         13_500_000_000_000,
         OsRng,
     )
