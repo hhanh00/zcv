@@ -38,10 +38,11 @@ impl ElectionPropsPub {
             let domain = q.domain(self)?;
             query(
                 "INSERT INTO questions
-                (election, idx, domain, title, subtitle, data)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (election, idx, domain, address, title, subtitle, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT DO UPDATE SET
                 domain = excluded.domain,
+                address = excluded.address,
                 title = excluded.title,
                 subtitle = excluded.subtitle,
                 data = excluded.data",
@@ -49,6 +50,7 @@ impl ElectionPropsPub {
             .bind(election)
             .bind(i as u32)
             .bind(domain.to_repr().as_slice())
+            .bind(&q.address)
             .bind(&q.title)
             .bind(&q.subtitle)
             .bind(q_js)

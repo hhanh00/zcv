@@ -48,6 +48,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         election INTEGER NOT NULL,
         idx INTEGER NOT NULL,
         domain BLOB NOT NULL,
+        address TEXT NOT NULL,
         title TEXT NOT NULL,
         subtitle TEXT NOT NULL,
         data TEXT NOT NULL,
@@ -107,8 +108,10 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     // server / validator
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS results(
-        question_ref TEXT PRIMARY KEY,
-        votes INTEGER NOT NULL)",
+        question INTEGER NOT NULL,
+        answer INTEGER NOT NULL,
+        votes INTEGER NOT NULL,
+        PRIMARY KEY (question, answer))",
     )
     .execute(&mut *conn)
     .await?;
@@ -161,20 +164,21 @@ pub async fn get_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult
 
 pub async fn get_domain(
     conn: &mut SqliteConnection,
-    id_election: u32,
-    question: usize,
-) -> ZCVResult<Fp> {
-    let (domain,): (Vec<u8>,) = query_as(
-        "SELECT domain FROM questions
-    WHERE election = ?1 AND idx = ?2",
+    hash: &[u8],
+    idx_question: usize,
+) -> ZCVResult<(Fp, String)> {
+    let (domain, address): (Vec<u8>, String) = query_as(
+        "SELECT q.domain, q.address FROM questions q
+        JOIN elections e ON q.election = e.id_election
+    WHERE e.hash = ?1 AND q.idx = ?2",
     )
-    .bind(id_election)
-    .bind(question as u32)
+    .bind(hash)
+    .bind(idx_question as u32)
     .fetch_one(conn)
     .await
     .context("select domain")?;
     let domain = Fp::from_repr(tiu!(domain)).unwrap();
-    Ok(domain)
+    Ok((domain, address))
 }
 
 pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Vec<u8>> {
@@ -315,7 +319,9 @@ pub async fn fetch_ballots(
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot}, error::IntoAnyhow, tests::{get_connection, test_election_hash, test_setup}
+        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot},
+        error::IntoAnyhow,
+        tests::{TEST_ELECTION_HASH, get_connection, test_setup},
     };
     use anyhow::Result;
     use ff::PrimeField;
@@ -355,12 +361,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_ballot() -> Result<()> {
-        let hash = test_election_hash();
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         query("DELETE FROM ballots").execute(&mut *conn).await?;
-        let election = get_election(&mut conn, &hash).await?;
-        let domain = get_domain(&mut conn, 1, 1).await?;
+        let election = get_election(&mut conn, TEST_ELECTION_HASH).await?;
+        let (domain, _address) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
         let dummy_ballot = Ballot {
             data: BallotData {
                 version: 1,

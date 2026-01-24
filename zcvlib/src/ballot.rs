@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bech32::{Bech32m, Hrp};
 use ff::PrimeField;
 use orchard::{
     Address,
@@ -12,26 +13,20 @@ use sqlx::{SqliteConnection, query, query_as};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 
 use crate::{
-    ZCVError, ZCVResult,
-    balance::list_unspent_notes,
-    db::{fetch_ballots, get_election, get_ivks, get_question, store_received_note},
-    election::derive_question_sk,
-    error::IntoAnyhow,
-    tiu,
+    ZCVError, ZCVResult, balance::list_unspent_notes, db::{fetch_ballots, get_ivks, store_received_note}, election::derive_question_sk, error::IntoAnyhow, pod::ZCV_HRP, tiu
 };
 
 pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     network: &Network,
     conn: &mut SqliteConnection,
     domain: Fp,
-    answer: usize,
+    address: &str,
+    _memo: &[u8],
     amount: u64,
     mut rng: R,
 ) -> ZCVResult<BallotData> {
     let (fvk, _, _) = get_ivks(network, conn).await?;
-    let question = get_question(conn, domain).await?;
-    let answer = &question.answers[answer];
-    let (_, recipient) = bech32::decode(&answer.address).anyhow()?;
+    let (_, recipient) = bech32::decode(address).anyhow()?;
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
     let mut a = amount;
     let utxos = list_unspent_notes(conn, domain).await?;
@@ -107,8 +102,8 @@ pub async fn tally_ballots(
     election_seed: &str,
     hash: &[u8],
 ) -> ZCVResult<()> {
-    let domains: Vec<(u32, Vec<u8>)> = query_as(
-        "SELECT id_question, domain FROM questions q
+    let domains: Vec<(u32, Vec<u8>, String)> = query_as(
+        "SELECT idx, domain, address FROM questions q
     JOIN elections e ON q.election = e.id_election
     WHERE e.hash = ?1 ORDER BY idx",
     )
@@ -116,69 +111,75 @@ pub async fn tally_ballots(
     .fetch_all(&mut *conn)
     .await?;
     let mut ivks: HashMap<u32, PreparedIncomingViewingKey> = HashMap::new();
-    for (id_question, domain) in domains {
+    for (idx, domain, address) in domains {
         let domain = Fp::from_repr(tiu!(domain)).unwrap();
         let spk = derive_question_sk(election_seed, network.coin_type(), domain)?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = fvk.to_ivk(Scope::External);
         let pivk = PreparedIncomingViewingKey::new(&ivk);
-        ivks.insert(id_question, pivk);
-    }
-    let election = get_election(conn, hash).await?;
-    let mut addresses: HashMap<Vec<u8>, String> = HashMap::new();
-    for (iq, q) in election.questions.iter().enumerate() {
-        for (ia, a) in q.answers.iter().enumerate() {
-            let (_, address) = bech32::decode(&a.address).anyhow()?;
-            let question_ref = format!("{}.{}", iq + 1, ia + 1);
-            addresses.insert(address, question_ref);
-        }
+        let address2 = fvk.address_at(0u64, Scope::External);
+        let address2 =
+            bech32::encode::<Bech32m>(Hrp::parse(ZCV_HRP).unwrap(), &address2.to_raw_address_bytes()).anyhow()?;
+        assert_eq!(address, address2);
+        ivks.insert(idx, pivk);
     }
 
-    let mut counts: HashMap<String, u64> = HashMap::new();
+    let mut counts = vec![];
     fetch_ballots(conn, async |question, ballot_data| {
         let pivk = &ivks[&question];
         for action in ballot_data.actions.iter() {
             if let Some(note) = try_decrypt_ballot(pivk, action)? {
-                let recipient = note.recipient().to_raw_address_bytes();
-                if let Some(question_ref) = addresses.get(recipient.as_slice()) {
-                    let c = counts.entry(question_ref.clone()).or_insert(0);
-                    *c += note.value().inner();
-                }
+                let votes = note.value().inner();
+                // TODO: Decrypt memo and parse answer
+                counts.push(Count {
+                    question,
+                    answer: 0, // TODO
+                    votes,
+                });
             }
         }
         Ok(())
     })
     .await?;
 
-    for (question_ref, count) in counts {
-        tracing::info!("{question_ref} {count}");
+    for c in counts {
+        tracing::info!("{c:?}");
         query(
-            "INSERT INTO results(question_ref, votes)
-        VALUES (?1, ?2)",
+            "INSERT INTO results(question, answer, votes)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT DO UPDATE SET
+        votes = votes + excluded.votes",
         )
-        .bind(&question_ref)
-        .bind(count as i64)
+        .bind(c.question)
+        .bind(c.answer)
+        .bind(c.votes as i64)
         .execute(&mut *conn)
         .await?;
     }
     Ok(())
 }
 
+#[derive(Debug)]
+struct Count {
+    question: u32,
+    answer: u32,
+    votes: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use ff::PrimeField;
     use orchard::{
         keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
         vote::try_decrypt_ballot,
     };
     use rand_core::OsRng;
-    use sqlx::{query, query_as};
+    use sqlx::{Connection, query, query_as};
     use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
 
     use crate::{
         ballot::{encrypt_ballot_data, tally_ballots},
-        db::get_domain,
+        db::{get_domain, get_question},
         election::derive_question_sk,
         error::IntoAnyhow,
         tests::{
@@ -193,12 +194,13 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        let domain = get_domain(&mut conn, 1, 2 /* question index */).await?;
+        let (domain, address) = get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
         let ballot = encrypt_ballot_data(
             &Network::MainNetwork,
             &mut conn,
             domain,
-            1, /* answer index */
+            &address,
+            &[], /* answer */
             100000,
             OsRng,
         )
@@ -220,37 +222,37 @@ mod tests {
         run_scan(&mut conn).await?;
         query("DELETE FROM ballots").execute(&mut *conn).await?;
         query("DELETE FROM results").execute(&mut *conn).await?;
-        let hash = hex::decode(TEST_ELECTION_HASH).unwrap();
-        let domain = get_domain(&mut conn, 1, 1).await?;
-        let (question,): (u32,) = query_as("SELECT id_question FROM questions WHERE domain = ?1")
-            .bind(domain.to_repr().as_slice())
-            .fetch_one(&mut *conn)
-            .await?;
+        let mut tx = conn.begin().await?;
+        let (domain, address) = get_domain(&mut tx, TEST_ELECTION_HASH, 1).await?;
+        let question = get_question(&mut tx, domain).await?;
         query("UPDATE notes SET value = value * 100000000")
-        .execute(&mut *conn).await?;
+        .execute(&mut *tx).await?;
         query("UPDATE spends SET value = value * 100000000")
-        .execute(&mut *conn).await?;
-        let ballot = test_ballot(&mut conn, domain).await?;
+        .execute(&mut *tx).await?;
+        let ballot = test_ballot(&mut tx, domain, &address).await?;
         for itx in 0..2 {
             query(
                 "INSERT INTO ballots(height, itx, question, data, witness)
         VALUES (1, ?1, ?2, ?3, '{}')",
             )
             .bind(itx)
-            .bind(question)
+            .bind(question.index as u32)
             .bind(serde_json::to_string(&ballot).unwrap())
-            .execute(&mut *conn)
+            .execute(&mut *tx)
             .await?;
         }
-        tally_ballots(&Network::MainNetwork, &mut conn, TEST_ELECTION_SEED, &hash).await?;
-        let (votes,): (i64,) = query_as("SELECT votes FROM results WHERE question_ref = '2.2'")
-            .fetch_one(&mut *conn)
+        tally_ballots(&Network::MainNetwork, &mut tx, TEST_ELECTION_SEED, TEST_ELECTION_HASH).await?;
+        // TODO: Fix test when parsing ballot memos is implemented
+        let (votes,): (i64,) = query_as("SELECT votes FROM results WHERE question = 1 and answer = 0")
+            .fetch_one(&mut *tx)
             .await?;
         assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000
         query("UPDATE notes SET value = value / 100000000")
-        .execute(&mut *conn).await?;
+        .execute(&mut *tx).await?;
         query("UPDATE spends SET value = value / 100000000")
-        .execute(&mut *conn).await?;
+        .execute(&mut *tx).await?;
+
+        tx.commit().await?;
         Ok(())
     }
 }

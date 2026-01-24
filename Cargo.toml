@@ -43,6 +43,7 @@ zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
 zip32 = "0.2"
 redact = {version = "0.1", features = ["serde"]}
+hex-literal = "1.1"
 
 [workspace.dependencies.hex]
 features = ["serde"]

@@ -37,6 +37,7 @@ prost = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_core = { workspace = true }
 rocket_cors = { workspace = true }
+hex-literal = { workspace = true }
 
 tendermint-abci = { workspace = true }
 tendermint = { workspace = true }
