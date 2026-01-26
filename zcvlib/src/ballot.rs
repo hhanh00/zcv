@@ -92,12 +92,13 @@ pub async fn decrypt_ballot_data(
     let ivk = fvk.to_ivk(Scope::External);
     let ivk = PreparedIncomingViewingKey::new(&ivk);
     for (i, action) in ballot.actions.into_iter().enumerate() {
-        if let Some(note) = try_decrypt_ballot(&ivk, action)? {
+        if let Some((note, memo)) = try_decrypt_ballot(&ivk, action)? {
             store_received_note(
                 conn,
                 domain,
                 &fvk,
                 &note,
+                &memo,
                 height,
                 position + i as u32,
                 question,
@@ -109,12 +110,57 @@ pub async fn decrypt_ballot_data(
     Ok(())
 }
 
-pub async fn tally_ballots(
+pub const MAX_CHOICES: usize = 32;
+pub const MAX_QUESTIONS: usize = 64;
+
+fn plurality(question: u32, amount: u64, memo: [u8; 512], counts: &mut [u64; MAX_CHOICES * MAX_QUESTIONS]) -> ZCVResult<()> {
+    // each byte in the memo is a "vote" for the choice at
+    // that offset
+    for i in 0..MAX_CHOICES {
+        let idx = question as usize * MAX_CHOICES + i;
+        if memo[i] != 0 {
+            counts[idx] += amount;
+        }
+    }
+    Ok(())
+}
+
+pub async fn tally_plurality_election(
     network: &Network,
     conn: &mut SqliteConnection,
     election_seed: &str,
     hash: &[u8],
 ) -> ZCVResult<()> {
+    let counts = tally_ballots(network, conn, election_seed, hash,
+        [0u64; MAX_CHOICES * MAX_QUESTIONS],
+        plurality).await?;
+    for (i, c) in counts.iter().enumerate() {
+        if *c == 0 { continue; }
+        let idx_question = i / MAX_CHOICES;
+        let idx_votes = i % MAX_CHOICES;
+        query(
+            "INSERT INTO results(question, answer, votes)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT DO UPDATE SET
+        votes = votes + excluded.votes",
+        )
+        .bind(idx_question as u32)
+        .bind(idx_votes as u32)
+        .bind(*c as i64)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn tally_ballots<R>(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    election_seed: &str,
+    hash: &[u8],
+    mut result: R,
+    memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>
+) -> ZCVResult<R> {
     let domains: Vec<(u32, Vec<u8>, String)> = query_as(
         "SELECT idx, domain, address FROM questions q
     JOIN elections e ON q.election = e.id_election
@@ -140,46 +186,19 @@ pub async fn tally_ballots(
         ivks.insert(idx, pivk);
     }
 
-    let mut counts = vec![];
     fetch_ballots(conn, async |question, ballot_data| {
         let pivk = &ivks[&question];
         for action in ballot_data.actions.into_iter() {
-            if let Some(note) = try_decrypt_ballot(pivk, action)? {
+            if let Some((note, memo)) = try_decrypt_ballot(pivk, action)? {
                 let votes = note.value().inner();
-                // TODO: Decrypt memo and parse answer
-                counts.push(Count {
-                    question,
-                    answer: 0, // TODO
-                    votes,
-                });
+                memo_handler(question, votes, memo, &mut result)?;
             }
         }
         Ok(())
     })
     .await?;
 
-    for c in counts {
-        tracing::info!("{c:?}");
-        query(
-            "INSERT INTO results(question, answer, votes)
-        VALUES (?1, ?2, ?3)
-        ON CONFLICT DO UPDATE SET
-        votes = votes + excluded.votes",
-        )
-        .bind(c.question)
-        .bind(c.answer)
-        .bind(c.votes as i64)
-        .execute(&mut *conn)
-        .await?;
-    }
-    Ok(())
-}
-
-#[derive(Debug)]
-struct Count {
-    question: u32,
-    answer: u32,
-    votes: u64,
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -194,7 +213,7 @@ mod tests {
     use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
 
     use crate::{
-        ballot::{encrypt_ballot_data, tally_ballots},
+        ballot::{encrypt_ballot_data, tally_plurality_election},
         db::{get_domain, get_question},
         election::derive_question_sk,
         error::IntoAnyhow,
@@ -248,7 +267,7 @@ mod tests {
         query("UPDATE spends SET value = value * 100000000")
             .execute(&mut *tx)
             .await?;
-        let ballot = test_ballot(&mut tx, domain, &address).await?;
+        let ballot = test_ballot(&mut tx, domain, &address, &[0, 0, 1, 0]).await?;
         for itx in 0..2 {
             query(
                 "INSERT INTO ballots(height, itx, question, data, witness)
@@ -260,16 +279,15 @@ mod tests {
             .execute(&mut *tx)
             .await?;
         }
-        tally_ballots(
+        tally_plurality_election(
             &Network::MainNetwork,
             &mut tx,
             TEST_ELECTION_SEED,
             TEST_ELECTION_HASH,
         )
         .await?;
-        // TODO: Fix test when parsing ballot memos is implemented
         let (votes,): (i64,) =
-            query_as("SELECT votes FROM results WHERE question = 1 and answer = 0")
+            query_as("SELECT votes FROM results WHERE question = 1 and answer = 2")
                 .fetch_one(&mut *tx)
                 .await?;
         assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000

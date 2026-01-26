@@ -121,6 +121,7 @@ pub async fn scan_blocks(
                                 *domain,
                                 &fvk,
                                 &note,
+                                &[], // memos are not used prior to voting
                                 height,
                                 position,
                                 *id_question,

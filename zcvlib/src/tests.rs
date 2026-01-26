@@ -22,13 +22,13 @@ pub async fn test_context() -> Result<Context> {
     Ok(ctx)
 }
 
-pub async fn test_ballot(conn: &mut SqliteConnection, domain: Fp, address: &str) -> ZCVResult<BallotData> {
+pub async fn test_ballot(conn: &mut SqliteConnection, domain: Fp, address: &str, memo: &[u8]) -> ZCVResult<BallotData> {
     let ballot = encrypt_ballot_data(
         &Network::MainNetwork,
         conn,
         domain,
         address,
-        &[], /* answer */
+        memo,
         13_500_000_000_000,
         OsRng,
     )

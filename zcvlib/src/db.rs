@@ -79,6 +79,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         diversifier BLOB NOT NULL,
         rseed BLOB NOT NULL,
         value INTEGER NOT NULL,
+        memo BLOB NOT NULL,
         UNIQUE (question, position))",
     )
     .execute(&mut *conn)
@@ -229,6 +230,7 @@ pub async fn store_received_note(
     election_domain: Fp,
     fvk: &FullViewingKey,
     note: &Note,
+    memo: &[u8],
     height: u32,
     position: u32,
     question: u32,
@@ -239,8 +241,8 @@ pub async fn store_received_note(
 
     query(
         "INSERT INTO notes
-    (question, height, scope, position, nf, dnf, rho, diversifier, rseed, value)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    (question, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(question)
     .bind(height)
@@ -252,6 +254,7 @@ pub async fn store_received_note(
     .bind(note.recipient().diversifier().as_array().as_slice())
     .bind(note.rseed().as_bytes().as_slice())
     .bind(note.value().inner() as i64)
+    .bind(memo)
     .execute(conn)
     .await?;
 
