@@ -1,7 +1,7 @@
 [patch.crates-io.orchard]
 # path = "./orchard"
 git = "https://github.com/hhanh00/orchard.git"
-rev = "ae6e63a1da6407810bf11b0e427a4b66d67e707f"
+rev = "c75e90fbc9ee1245f523b138e905a359368f9016"
 
 [workspace]
 exclude = ["orchard"]
@@ -44,7 +44,6 @@ zcash_protocol = "0.7"
 zip32 = "0.2"
 redact = {version = "0.1", features = ["serde"]}
 hex-literal = "1.1"
-chacha20poly1305 = "0.10"
 
 [workspace.dependencies.hex]
 features = ["serde"]
