@@ -1,6 +1,8 @@
 syntax = "proto3";
 package cash.z.vote.sdk.rpc;
 
+message Empty {}
+
 message VoteMessage {
     oneof type_oneof {
         AddValidator add_validator = 1;
@@ -20,5 +22,30 @@ message SetElection {
 }
 
 message Ballot {
-    string ballot = 1;
+    bytes ballot = 1;
+}
+
+message VoteHeight {
+    uint32 height = 1;
+    bytes hash = 2;
+}
+
+message VoteRange {
+    uint32 start = 1;
+    uint32 end = 2;
+}
+
+message Ballots {
+    uint32 height = 1;
+    repeated Ballot ballots = 2;
+}
+
+message Hash {
+    bytes hash = 1;
+}
+
+service VoteStreamer {
+    rpc GetLatestVoteHeight(Empty) returns (VoteHeight) {}
+    rpc GetVoteRange(VoteRange) returns (stream Ballots) {}
+    rpc SubmitVote(Ballot) returns (Hash) {}
 }

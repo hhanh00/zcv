@@ -2077,11 +2077,12 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=c75e90fbc9ee1245f523b138e905a359368f9016#c75e90fbc9ee1245f523b138e905a359368f9016"
+source = "git+https://github.com/hhanh00/orchard.git?rev=e9f61a6aaef06b32575a73f3c948b16a8894806f#e9f61a6aaef06b32575a73f3c948b16a8894806f"
 dependencies = [
  "aes",
  "bitvec",
  "blake2b_simd",
+ "byteorder",
  "core2",
  "ff",
  "fpe",
@@ -2104,6 +2105,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "visibility",
+ "zcash_encoding",
  "zcash_note_encryption",
  "zcash_spec",
  "zip32",
@@ -4655,6 +4657,16 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "zcash_encoding"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bca38087e6524e5f51a5b0fb3fc18f36d7b84bf67b2056f494ca0c281590953d"
+dependencies = [
+ "core2",
+ "nonempty",
 ]
 
 [[package]]

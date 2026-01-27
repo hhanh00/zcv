@@ -100,8 +100,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         height INTEGER NOT NULL,
         itx INTEGER NOT NULL,
         question INTEGER NOT NULL,
-        data TEXT NOT NULL,
-        witness TEXT NOT NULL,
+        data BLOB NOT NULL,
+        witness BLOB NOT NULL,
         UNIQUE (height, itx))",
     )
     .execute(&mut *conn)
@@ -288,6 +288,11 @@ pub async fn store_ballot(
 ) -> ZCVResult<()> {
     let Ballot { data, witnesses } = ballot;
     let domain = &data.domain;
+    let mut data_bytes = vec![];
+    data.write(&mut data_bytes).anyhow()?;
+    let mut witnesses_bytes = vec![];
+    witnesses.write(&mut witnesses_bytes).anyhow()?;
+
     query(
         "INSERT INTO ballots(height, itx, question, data, witness)
     SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
@@ -295,9 +300,9 @@ pub async fn store_ballot(
     )
     .bind(height)
     .bind(itx)
-    .bind(serde_json::to_string(&data)?)
-    .bind(serde_json::to_string(&witnesses)?)
-    .bind(domain)
+    .bind(&data_bytes)
+    .bind(&witnesses_bytes)
+    .bind(domain.as_slice())
     .execute(conn)
     .await?;
     Ok(())
@@ -311,8 +316,8 @@ pub async fn fetch_ballots(
     while let Some(r) = s.next().await {
         if let Ok(r) = r {
             let question: u32 = r.get(0);
-            let data: String = r.get(1);
-            let ballot_data: BallotData = serde_json::from_str(&data).unwrap();
+            let data: Vec<u8> = r.get(1);
+            let ballot_data = BallotData::read(&*data).unwrap();
             handler(question, ballot_data).await?;
         }
     }
@@ -372,17 +377,17 @@ mod tests {
         let dummy_ballot = Ballot {
             data: BallotData {
                 version: 1,
-                domain: domain.to_repr().to_vec(),
+                domain: domain.to_repr(),
                 actions: vec![],
                 anchors: BallotAnchors {
-                    nf: vec![0; 32],
-                    cmx: vec![0; 32],
+                    nf: [0; 32],
+                    cmx: [0; 32],
                 },
             },
             witnesses: BallotWitnesses {
                 proofs: vec![],
                 sp_signatures: None,
-                binding_signature: vec![],
+                binding_signature: [0u8; 64],
             },
         };
         store_ballot(&mut conn, election.end + 1, 0, dummy_ballot).await?;
@@ -396,7 +401,7 @@ mod tests {
             let h = ballot_data.sighash().anyhow()?;
             assert_eq!(
                 hex::encode(&h),
-                "aaf7c9385268beb9e936451d25b4327aa79d2c3239cd2f894bbb50eeccd44d42"
+                "ef001c3ac531a4378ea40688166d0b637362f35d6d77c3a93567f57c0da2e633"
             );
             count_ballot2 += 1;
             Ok(())

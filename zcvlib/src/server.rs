@@ -91,7 +91,7 @@ impl Application for Server {
                 && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
             {
                 let mut state = self.state.lock();
-                let ballot: orchard::vote::Ballot = serde_json::from_str(&ballot.ballot)?;
+                let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
                 state.check_ballot(ballot)?;
             }
             Ok::<_, ZCVError>(())
@@ -164,8 +164,9 @@ impl Application for Server {
                         if let Some(m) = msg.type_oneof
                             && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
                         {
-                            let ballot: orchard::vote::Ballot =
-                                serde_json::from_str(&ballot.ballot)?;
+                            let ballot = orchard::vote::Ballot::read(
+                                &*ballot.ballot,
+                            ).anyhow()?;
                             store_ballot(
                                 &mut db_tx,
                                 state.start_height + height as u32,
