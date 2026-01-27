@@ -10,11 +10,15 @@ pub mod server;
 
 #[path = "cash.z.wallet.sdk.rpc.rs"]
 pub mod rpc;
-// or tonic::include_proto!("cash.z.wallet.sdk.rpc");
+// pub mod rpc {
+//     tonic::include_proto!("cash.z.wallet.sdk.rpc");
+// }
 
 #[path = "cash.z.vote.sdk.rpc.rs"]
 pub mod vote_rpc;
-// or tonic::include_proto!("cash.z.vote.sdk.rpc");
+// pub mod vote_rpc {
+//     tonic::include_proto!("cash.z.vote.sdk.rpc");
+// }
 
 pub use error::ZCVResult;
 pub use error::Error as ZCVError;

@@ -69,11 +69,11 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     assert_eq!(a, 0);
     let ballot = BallotData {
         version: 1,
-        domain: domain.to_repr().to_vec(),
+        domain: domain.to_repr(),
         actions,
         anchors: BallotAnchors {
-            nf: vec![],
-            cmx: vec![],
+            nf: [0u8; 32],
+            cmx: [0u8; 32],
         },
     };
     Ok(ballot)
@@ -268,6 +268,8 @@ mod tests {
             .execute(&mut *tx)
             .await?;
         let ballot = test_ballot(&mut tx, domain, &address, &[0, 0, 1, 0]).await?;
+        let mut ballot_bytes = vec![];
+        ballot.write(&mut ballot_bytes)?;
         for itx in 0..2 {
             query(
                 "INSERT INTO ballots(height, itx, question, data, witness)
@@ -275,7 +277,7 @@ mod tests {
             )
             .bind(itx)
             .bind(question.index as u32)
-            .bind(serde_json::to_string(&ballot).unwrap())
+            .bind(&ballot_bytes)
             .execute(&mut *tx)
             .await?;
         }
