@@ -29,8 +29,8 @@ jobs:
           ./target/release/vote-cometbft &
           echo "APP_PID=$!" >> $GITHUB_ENV
           sleep 3
-          curl -d @tests/ballot1.json -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
-          curl -d @tests/ballot2.json -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
+          curl -d @tests/ballot1.hex -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
+          curl -d @tests/ballot2.hex -X POST -H 'Content-Type: application/json' http://localhost:8000/submit_ballot
       - name: Cleanup
         run: |
           kill -9 $COMETBFT_PID
@@ -39,4 +39,4 @@ jobs:
         run: |
           export COUNT=$(sqlite3 vote.db "SELECT COUNT(*) FROM ballots")
           echo $COUNT
-          [ "$COUNT" -eq 2 ]
+          [ "$COUNT" -eq 4 ]
