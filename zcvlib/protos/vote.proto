@@ -21,10 +21,6 @@ message SetElection {
     string election = 1;
 }
 
-message Ballot {
-    bytes ballot = 1;
-}
-
 message VoteHeight {
     uint32 height = 1;
     bytes hash = 2;
@@ -35,9 +31,11 @@ message VoteRange {
     uint32 end = 2;
 }
 
-message Ballots {
+message Ballot {
     uint32 height = 1;
-    repeated Ballot ballots = 2;
+    uint32 itx = 2;
+    bytes data = 3;
+    bytes witnesses = 4;
 }
 
 message Hash {
@@ -46,6 +44,6 @@ message Hash {
 
 service VoteStreamer {
     rpc GetLatestVoteHeight(Empty) returns (VoteHeight) {}
-    rpc GetVoteRange(VoteRange) returns (stream Ballots) {}
+    rpc GetVoteRange(VoteRange) returns (stream Ballot) {}
     rpc SubmitVote(Ballot) returns (Hash) {}
 }

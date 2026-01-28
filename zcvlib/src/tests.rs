@@ -18,7 +18,7 @@ pub const TEST_ELECTION_HASH: &[u8] =
     &hex!("3A1ECEBCB20EABF35941C08717ECDAE080CA3F20279BD2BD8C757E74C82F8359");
 
 pub async fn test_context() -> Result<Context> {
-    let ctx = Context::new("vote.db", "").await?;
+    let ctx = Context::new("vote.db", "", 0).await?;
     Ok(ctx)
 }
 

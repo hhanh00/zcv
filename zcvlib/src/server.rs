@@ -3,15 +3,12 @@ use crate::{
     context::Context,
     db::{get_apphash, get_election, store_apphash, store_ballot},
     error::IntoAnyhow,
-    server::rpc::submit_ballot,
     vote_rpc::VoteMessage,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use parking_lot::Mutex;
 use prost::Message;
-use rocket::{figment::Figment, routes};
-use rocket_cors::CorsOptions;
 use serde_json::Value;
 use sqlx::{Acquire, SqlitePool};
 use std::{
@@ -91,7 +88,7 @@ impl Application for Server {
                 && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
             {
                 let mut state = self.state.lock();
-                let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
+                let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
                 state.check_ballot(ballot)?;
             }
             Ok::<_, ZCVError>(())
@@ -165,7 +162,7 @@ impl Application for Server {
                             && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
                         {
                             let ballot = orchard::vote::Ballot::read(
-                                &*ballot.ballot,
+                                &*ballot.data,
                             ).anyhow()?;
                             store_ballot(
                                 &mut db_tx,
@@ -228,30 +225,15 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub async fn run_cometbft_app(context: &Context, hash: &[u8], port: u16) -> ZCVResult<()> {
-    let app = Server::new(context.pool.clone(), hash).await?;
+pub async fn run_cometbft_app(context: Arc<tokio::sync::Mutex<Context>>, hash: &[u8], port: u16) -> ZCVResult<()> {
+    let pool = {
+        let c = context.lock().await;
+        c.pool.clone()
+    };
+    let app = Server::new(pool, hash).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;
     server.listen().anyhow()?;
-    Ok(())
-}
-
-pub fn run_rocket_server(config: Figment, mut context: Context, comet_port: u16) -> ZCVResult<()> {
-    context.comet_port = comet_port;
-    rocket::execute(async move {
-        let cors = CorsOptions::default().to_cors().unwrap();
-        let _rocket = rocket::custom(config)
-            .attach(cors)
-            .manage(context)
-            .mount("/", routes![submit_ballot,])
-            .ignite()
-            .await
-            .anyhow()?
-            .launch()
-            .await
-            .anyhow()?;
-        Ok::<_, ZCVError>(())
-    })?;
     Ok(())
 }

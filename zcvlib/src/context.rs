@@ -8,7 +8,8 @@ use crate::ZCVResult;
 pub struct Context {
     pub pool: SqlitePool,
     pub lwd_url: String,
-    pub comet_port: u16,
+    pub cometrpc_port: u16,
+    pub grpc_port: u16,
 }
 
 impl Context {
@@ -20,7 +21,7 @@ impl Context {
         let _ = tracing::subscriber::set_global_default(subscriber);
     }
 
-    pub async fn new(db_path: &str, lwd_url: &str) -> ZCVResult<Context> {
+    pub async fn new(db_path: &str, lwd_url: &str, comet_rpcport: u16) -> ZCVResult<Context> {
         Self::init_logger();
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
@@ -30,7 +31,8 @@ impl Context {
         Ok(Context {
             pool,
             lwd_url: lwd_url.to_string(),
-            comet_port: 0,
+            cometrpc_port: comet_rpcport,
+            grpc_port: 0,
         })
     }
 
