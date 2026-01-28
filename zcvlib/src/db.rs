@@ -1,13 +1,13 @@
 use anyhow::Context;
 use bip39::Mnemonic;
 use ff::PrimeField;
+use futures::StreamExt;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
     vote::{Ballot, BallotData},
 };
 use pasta_curves::Fp;
-use rocket::futures::StreamExt;
 use sqlx::{Row, SqliteConnection, query, query_as};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};

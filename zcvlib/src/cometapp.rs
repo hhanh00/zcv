@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use rocket::Config;
+use figment::{
+    Figment,
+    providers::{Format, Toml},
+};
+use serde::Deserialize;
 use tokio::{sync::Mutex, task::LocalSet};
 use tonic::transport::Server;
 use zcvlib::{
@@ -11,15 +15,27 @@ use zcvlib::{
     vote_rpc::vote_streamer_server::VoteStreamerServer,
 };
 
+#[derive(Deserialize)]
+pub struct Config {
+    pub cometrpc_port: u16,
+    pub cometbft_port: u16,
+    pub grpc_port: u16,
+    pub db_path: String,
+    pub lwd_url: String,
+    pub hash: String,
+}
+
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    let config = Config::figment();
-    let cometrpc_port: u16 = config.extract_inner("custom.cometrpc_port")?;
-    let cometbft_port: u16 = config.extract_inner("custom.cometbft_port")?;
-    let grpc_port: u16 = config.extract_inner("custom.grpc_port")?;
-    let db_path: String = config.extract_inner("custom.db_path")?;
-    let lwd_url: String = config.extract_inner("custom.lwd_url")?;
-    let hash: String = config.extract_inner("custom.election")?;
+    let config: Config = Figment::new().merge(Toml::file("zcv.toml")).extract()?;
+    let Config {
+        cometrpc_port,
+        cometbft_port,
+        grpc_port,
+        db_path,
+        lwd_url,
+        hash,
+    } = config;
     let hash = hex::decode(&hash)?;
     let context = Context::new(&db_path, &lwd_url, cometrpc_port).await?;
     let context = Arc::new(Mutex::new(context));

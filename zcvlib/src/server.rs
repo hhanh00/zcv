@@ -65,13 +65,6 @@ impl ServerState {
     }
 }
 
-impl rocket::response::Responder<'_, 'static> for ZCVError {
-    fn respond_to(self, request: &'_ rocket::Request<'_>) -> rocket::response::Result<'static> {
-        let error_string = self.to_string();
-        (rocket::http::Status::InternalServerError, error_string).respond_to(request)
-    }
-}
-
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
         Default::default()

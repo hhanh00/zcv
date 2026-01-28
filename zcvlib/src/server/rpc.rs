@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use prost::Message;
-use rocket::State;
 use sqlx::query_as;
 use tokio::sync::{Mutex, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
@@ -84,24 +83,6 @@ impl VoteStreamer for ZCVServer {
         };
         res.await.map_err(to_tonic)
     }
-}
-
-#[rocket::post("/submit_ballot", format = "json", data = "<ballot>")]
-pub async fn submit_ballot(
-    ballot: String,
-    config: &State<Context>,
-) -> ZCVResult<serde_json::Value> {
-    let ballot_bytes = hex::decode(&ballot).anyhow()?;
-    let b = Ballot {
-        height: 0,
-        itx: 0,
-        data: ballot_bytes,
-        witnesses: vec![],
-    };
-    let m = VoteMessage {
-        type_oneof: Some(crate::vote_rpc::vote_message::TypeOneof::Ballot(b)),
-    };
-    submit_tx(m.encode_to_vec().as_slice(), config.cometrpc_port).await
 }
 
 pub fn to_tonic(e: anyhow::Error) -> tonic::Status {
