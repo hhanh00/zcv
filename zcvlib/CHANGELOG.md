@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.3.0...zcvlib-v0.4.0) (2026-01-28)
+
+
+### Features
+
+* add memo encryption ([#65](https://github.com/hhanh00/zcv/issues/65)) ([f694cbc](https://github.com/hhanh00/zcv/commit/f694cbcf98c20c616d0bd835bc3a62406ce6ce72))
+* binary ballot serialization ([#67](https://github.com/hhanh00/zcv/issues/67)) ([4005433](https://github.com/hhanh00/zcv/commit/4005433531bf78a61e2a797e25d6f994fc6b7a12))
+* collapse votes to a question to a single address ([#63](https://github.com/hhanh00/zcv/issues/63)) ([d5db8cf](https://github.com/hhanh00/zcv/commit/d5db8cff08f75cb79bbdd74a88f9c5fccecf6765))
+* grpc vote service ([#69](https://github.com/hhanh00/zcv/issues/69)) ([eaa231f](https://github.com/hhanh00/zcv/commit/eaa231f6c179990fa34b1c886b11cf6ce90c732b))
+* plurality voting ([#66](https://github.com/hhanh00/zcv/issues/66)) ([e228ce3](https://github.com/hhanh00/zcv/commit/e228ce3450dd0576b199a762f0695eaf4d88d0eb))
+* use figment for config file parsing ([#70](https://github.com/hhanh00/zcv/issues/70)) ([099141b](https://github.com/hhanh00/zcv/commit/099141b1237ba01717e748c0b63bb93896a5b2c5))
+
+
+### Bug Fixes
+
+* cometbft integration test ([#68](https://github.com/hhanh00/zcv/issues/68)) ([5aae7c9](https://github.com/hhanh00/zcv/commit/5aae7c941ce169b0de35ede0e015a1101104ea01))
+
 ## [0.3.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.2.0...zcvlib-v0.3.0) (2026-01-24)
 
 
