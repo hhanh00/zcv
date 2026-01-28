@@ -54,15 +54,8 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     for spend in spends {
         let spend = spend.to_note(&fvk);
         let spend_amount = a.min(spend.value().inner());
-        let (action, _, _) = encrypt_ballot_action(
-            domain,
-            fvk.clone(),
-            &spend,
-            recipient,
-            a,
-            memo,
-            &mut rng,
-        )?;
+        let (action, _, _) =
+            encrypt_ballot_action(domain, fvk.clone(), &spend, recipient, a, memo, &mut rng)?;
         a -= spend_amount;
         actions.push(action);
     }
@@ -113,9 +106,16 @@ pub async fn decrypt_ballot_data(
 pub const MAX_CHOICES: usize = 32;
 pub const MAX_QUESTIONS: usize = 64;
 
-fn plurality(question: u32, amount: u64, memo: [u8; 512], counts: &mut [u64; MAX_CHOICES * MAX_QUESTIONS]) -> ZCVResult<()> {
+fn plurality(
+    question: u32,
+    amount: u64,
+    memo: [u8; 512],
+    counts: &mut [u64; MAX_CHOICES * MAX_QUESTIONS],
+) -> ZCVResult<()> {
     // each byte in the memo is a "vote" for the choice at
     // that offset
+    // we do not use the complete memo in this type of voting
+    #[allow(clippy::needless_range_loop)]
     for i in 0..MAX_CHOICES {
         let idx = question as usize * MAX_CHOICES + i;
         if memo[i] != 0 {
@@ -131,11 +131,19 @@ pub async fn tally_plurality_election(
     election_seed: &str,
     hash: &[u8],
 ) -> ZCVResult<()> {
-    let counts = tally_ballots(network, conn, election_seed, hash,
+    let counts = tally_ballots(
+        network,
+        conn,
+        election_seed,
+        hash,
         [0u64; MAX_CHOICES * MAX_QUESTIONS],
-        plurality).await?;
+        plurality,
+    )
+    .await?;
     for (i, c) in counts.iter().enumerate() {
-        if *c == 0 { continue; }
+        if *c == 0 {
+            continue;
+        }
         let idx_question = i / MAX_CHOICES;
         let idx_votes = i % MAX_CHOICES;
         query(
@@ -159,7 +167,7 @@ pub async fn tally_ballots<R>(
     election_seed: &str,
     hash: &[u8],
     mut result: R,
-    memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>
+    memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>,
 ) -> ZCVResult<R> {
     let domains: Vec<(u32, Vec<u8>, String)> = query_as(
         "SELECT idx, domain, address FROM questions q
@@ -206,13 +214,14 @@ mod tests {
     use anyhow::Result;
     use orchard::{
         keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-        vote::try_decrypt_ballot,
+        vote::{Ballot, BallotWitnesses, try_decrypt_ballot},
     };
     use rand_core::OsRng;
     use sqlx::{Connection, query, query_as};
     use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
 
     use crate::{
+        ZCVResult,
         ballot::{encrypt_ballot_data, tally_plurality_election},
         db::{get_domain, get_question},
         election::derive_question_sk,
@@ -301,6 +310,36 @@ mod tests {
             .await?;
 
         tx.commit().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn make_ballot_bin() -> ZCVResult<()> {
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        run_scan(&mut conn).await?;
+        let (domain, address) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
+        let ballot_data = encrypt_ballot_data(
+            &Network::MainNetwork,
+            &mut conn,
+            domain,
+            &address,
+            &[1, 1, 1, 1],
+            0,
+            OsRng,
+        )
+        .await?;
+        let ballot = Ballot {
+            data: ballot_data,
+            witnesses: BallotWitnesses {
+                proofs: vec![],
+                sp_signatures: None,
+                binding_signature: [0u8; 64],
+            },
+        };
+        let mut ballot_bytes = vec![];
+        ballot.write(&mut ballot_bytes).anyhow()?;
+        assert_eq!(ballot_bytes.len(), 907);
         Ok(())
     }
 }
