@@ -33,11 +33,6 @@ pub struct SetElection {
     pub election: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Ballot {
-    #[prost(bytes = "vec", tag = "1")]
-    pub ballot: ::prost::alloc::vec::Vec<u8>,
-}
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct VoteHeight {
     #[prost(uint32, tag = "1")]
     pub height: u32,
@@ -51,12 +46,16 @@ pub struct VoteRange {
     #[prost(uint32, tag = "2")]
     pub end: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Ballots {
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Ballot {
     #[prost(uint32, tag = "1")]
     pub height: u32,
-    #[prost(message, repeated, tag = "2")]
-    pub ballots: ::prost::alloc::vec::Vec<Ballot>,
+    #[prost(uint32, tag = "2")]
+    pub itx: u32,
+    #[prost(bytes = "vec", tag = "3")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub witnesses: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Hash {
@@ -184,7 +183,7 @@ pub mod vote_streamer_client {
             &mut self,
             request: impl tonic::IntoRequest<super::VoteRange>,
         ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::Ballots>>,
+            tonic::Response<tonic::codec::Streaming<super::Ballot>>,
             tonic::Status,
         > {
             self.inner
@@ -250,7 +249,7 @@ pub mod vote_streamer_server {
         ) -> std::result::Result<tonic::Response<super::VoteHeight>, tonic::Status>;
         /// Server streaming response type for the GetVoteRange method.
         type GetVoteRangeStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::Ballots, tonic::Status>,
+                Item = std::result::Result<super::Ballot, tonic::Status>,
             >
             + std::marker::Send
             + 'static;
@@ -393,7 +392,7 @@ pub mod vote_streamer_server {
                         T: VoteStreamer,
                     > tonic::server::ServerStreamingService<super::VoteRange>
                     for GetVoteRangeSvc<T> {
-                        type Response = super::Ballots;
+                        type Response = super::Ballot;
                         type ResponseStream = T::GetVoteRangeStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,

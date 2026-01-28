@@ -21,6 +21,20 @@ use crate::{
 
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     query(
+        "CREATE TABLE IF NOT EXISTS state(
+        id INTEGER PRIMARY KEY,
+        height INTEGER NOT NULL,
+        hash BLOB NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
+    query(
+        "INSERT INTO state(id, height, hash)
+    VALUES (0, 0, '') ON CONFLICT DO NOTHING",
+    )
+    .execute(&mut *conn)
+    .await?;
+    query(
         "CREATE TABLE IF NOT EXISTS account(
         id_account INTEGER PRIMARY KEY,
         seed TEXT NOT NULL,
@@ -319,6 +333,34 @@ pub async fn fetch_ballots(
             let data: Vec<u8> = r.get(1);
             let ballot_data = BallotData::read(&*data).unwrap();
             handler(question, ballot_data).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn get_ballot_range(
+    mut conn: SqliteConnection,
+    start: u32,
+    end: u32,
+    handler: impl AsyncFn(crate::vote_rpc::Ballot) -> ZCVResult<()>,
+) -> ZCVResult<()> {
+    let mut s = query("SELECT height, itx, domain, data FROM ballots
+    WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx")
+        .bind(start)
+        .bind(end)
+        .fetch(&mut conn);
+    while let Some(r) = s.next().await {
+        if let Ok(r) = r {
+            let height: u32 = r.get(0);
+            let itx: u32 = r.get(1);
+            let data: Vec<u8> = r.get(3);
+            let ballot = crate::vote_rpc::Ballot {
+                height,
+                itx,
+                data,
+                witnesses: vec![],
+            };
+            handler(ballot).await?;
         }
     }
     Ok(())
