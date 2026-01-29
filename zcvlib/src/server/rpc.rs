@@ -7,9 +7,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    ZCVResult,
     context::Context,
-    error::IntoAnyhow,
     server::submit_tx,
     vote_rpc::{
         Ballot, Empty, Hash, VoteHeight, VoteMessage, VoteRange, vote_streamer_server::VoteStreamer,
@@ -27,7 +25,6 @@ impl VoteStreamer for ZCVServer {
         _request: Request<Empty>,
     ) -> Result<Response<VoteHeight>, Status> {
         let res = async move {
-            println!("HAHA");
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
             let (height, hash): (u32, Vec<u8>) =
