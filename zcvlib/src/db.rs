@@ -24,13 +24,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS state(
         id INTEGER PRIMARY KEY,
         height INTEGER NOT NULL,
-        hash BLOB NOT NULL)",
+        hash BLOB NOT NULL,
+        started BOOL NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
     query(
-        "INSERT INTO state(id, height, hash)
-    VALUES (0, 0, '') ON CONFLICT DO NOTHING",
+        "INSERT INTO state(id, height, hash, started)
+    VALUES (0, 0, '', FALSE) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;

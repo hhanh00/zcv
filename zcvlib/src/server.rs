@@ -3,23 +3,28 @@ use crate::{
     context::Context,
     db::{get_apphash, get_election, store_apphash, store_ballot},
     error::IntoAnyhow,
-    vote_rpc::VoteMessage,
+    vote_rpc::{AddValidator, VoteMessage, vote_message::TypeOneof},
 };
+use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use parking_lot::Mutex;
 use prost::Message;
 use serde_json::Value;
-use sqlx::{Acquire, SqlitePool};
+use sqlx::{Acquire, SqlitePool, query, query_as};
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
 };
 use tendermint_abci::{Application, ServerBuilder};
-use tendermint_proto::abci::{
-    ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
-    ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
+use tendermint_proto::{
+    abci::{
+        ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
+        ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
+        ValidatorUpdate,
+    },
+    crypto::{PublicKey, public_key::Sum},
 };
 
 pub mod rpc;
@@ -44,17 +49,22 @@ pub struct ServerState {
     pub pool: SqlitePool,
     pub hash: Vec<u8>,
     pub start_height: u32,
+    pub started: bool,
 }
 
 impl ServerState {
     pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
         let e = get_election(&mut conn, hash).await?;
+        let (started,): (bool,) = query_as("SELECT started FROM state WHERE id = 0")
+            .fetch_one(&mut *conn)
+            .await?;
 
         Ok(Self {
             pool,
             hash: hash.to_vec(),
             start_height: e.end,
+            started,
         })
     }
 
@@ -77,12 +87,27 @@ impl Application for Server {
         let RequestCheckTx { mut tx, .. } = request;
         let mut check = || {
             let msg = VoteMessage::decode(&mut tx)?;
-            if let Some(m) = msg.type_oneof
-                && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
-            {
-                let mut state = self.state.lock();
-                let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
-                state.check_ballot(ballot)?;
+            if let Some(m) = msg.type_oneof {
+                match m {
+                    TypeOneof::Ballot(ballot) => {
+                        let mut state = self.state.lock();
+                        let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                        state.check_ballot(ballot)?;
+                    }
+                    TypeOneof::AddValidator(_) => {
+                        let state = self.state.lock();
+                        if state.started {
+                            return Err(ZCVError::Any(anyhow!("Validators cannot be added once the blockchain is started.")));
+                        }
+                    }
+                    TypeOneof::Start(_) => {
+                        let state = self.state.lock();
+                        if state.started {
+                            return Err(ZCVError::Any(anyhow!("Blockchain already started.")));
+                        }
+                    }
+                    _ => {}
+                }
             }
             Ok::<_, ZCVError>(())
         };
@@ -134,9 +159,10 @@ impl Application for Server {
         } = request;
         tracing::info!("Hash {} height {height}", hex::encode(&hash));
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let state = self.state.lock();
-        let tx_results = rt
+        let mut state = self.state.lock();
+        let (tx_results, validator_updates) = rt
             .block_on(async move {
+                let mut validator_updates = vec![];
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
                 let apphash = get_apphash(&mut db_tx, &state.hash).await?;
@@ -151,19 +177,38 @@ impl Application for Server {
                     hasher.update(&tx_copy);
                     let finalize = async {
                         let msg = VoteMessage::decode(&mut tx)?;
-                        if let Some(m) = msg.type_oneof
-                            && let crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot) = m
-                        {
-                            let ballot = orchard::vote::Ballot::read(
-                                &*ballot.data,
-                            ).anyhow()?;
-                            store_ballot(
-                                &mut db_tx,
-                                state.start_height + height as u32,
-                                itx as u32,
-                                ballot,
-                            )
-                            .await?;
+                        if let Some(m) = msg.type_oneof {
+                            match m {
+                                TypeOneof::Ballot(ballot) => {
+                                    let ballot =
+                                        orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                                    store_ballot(
+                                        &mut db_tx,
+                                        state.start_height + height as u32,
+                                        itx as u32,
+                                        ballot,
+                                    )
+                                    .await?;
+                                }
+                                TypeOneof::Start(_) => {
+                                    state.started = true;
+                                    query("UPDATE state SET started = 1 WHERE id = 0")
+                                        .execute(&mut *db_tx)
+                                        .await?;
+                                }
+                                TypeOneof::AddValidator(add_validator) => {
+                                    let AddValidator { pub_key, power } = add_validator;
+                                    let pub_key = PublicKey {
+                                        sum: Some(Sum::Ed25519(pub_key)),
+                                    };
+                                    let v = ValidatorUpdate {
+                                        pub_key: Some(pub_key),
+                                        power: power as i64,
+                                    };
+                                    validator_updates.push(v);
+                                }
+                                _ => {}
+                            }
                         }
                         Ok::<_, ZCVError>(())
                     };
@@ -186,12 +231,13 @@ impl Application for Server {
                 store_apphash(&mut db_tx, &state.hash, &apphash).await?;
 
                 db_tx.commit().await?;
-                Ok::<_, ZCVError>(tx_results)
+                Ok::<_, ZCVError>((tx_results, validator_updates))
             })
             .expect("Fatal Failure in FinalizeBlock");
 
         ResponseFinalizeBlock {
             tx_results,
+            validator_updates,
             ..ResponseFinalizeBlock::default()
         }
     }
@@ -218,7 +264,11 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub async fn run_cometbft_app(context: Arc<tokio::sync::Mutex<Context>>, hash: &[u8], port: u16) -> ZCVResult<()> {
+pub async fn run_cometbft_app(
+    context: Arc<tokio::sync::Mutex<Context>>,
+    hash: &[u8],
+    port: u16,
+) -> ZCVResult<()> {
     let pool = {
         let c = context.lock().await;
         c.pool.clone()
