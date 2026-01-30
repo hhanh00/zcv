@@ -282,7 +282,7 @@ mod tests {
         for itx in 0..2 {
             query(
                 "INSERT INTO ballots(height, itx, question, data, witness)
-        VALUES (1, ?1, ?2, ?3, '{}')",
+        VALUES (1, ?1, ?2, ?3, '')",
             )
             .bind(itx)
             .bind(question.index as u32)
