@@ -16,18 +16,20 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-      - name: Build
+      - name: Install dependencies
         run: |
           curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_arm64.tar.gz -o grpcurl.tar.gz
           tar -xzf grpcurl.tar.gz
           sudo mv grpcurl /usr/local/bin/
-          curl -Lo cometbft.tgz https://github.com/cometbft/cometbft/releases/download/v1.0.1/cometbft_1.0.1_linux_arm64.tar.gz
-          tar xvf cometbft.tgz
-          ./cometbft init
+          go install github.com/cometbft/cometbft/cmd/cometbft@v0.38
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      - name: Build
+        run: |
           cargo build -r
           cargo test
           cp zcvlib/vote.db .
-          ./cometbft start &
+          cometbft init
+          cometbft start &
           echo "COMETBFT_PID=$!" >> $GITHUB_ENV
           ./target/release/vote-cometbft &
           echo "APP_PID=$!" >> $GITHUB_ENV
