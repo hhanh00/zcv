@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-linux:
+  build-cluster:
     runs-on: ubuntu-24.04
 
     steps:
@@ -21,9 +21,74 @@ jobs:
           go-version: '1.25'
       - name: Install dependencies
         run: |
+          curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz -o grpcurl.tar.gz
+          tar -xzf grpcurl.tar.gz
+          sudo mv grpcurl /usr/local/bin/
           go install github.com/cometbft/cometbft/cmd/cometbft@v0.38
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          GOBIN=$(go env GOPATH)/bin
+          echo "GOBIN=$GOBIN" >> $GITHUB_ENV
+          echo "$GOBIN" >> $GITHUB_PATH
+      - name: Check out code
+        uses: actions/checkout@v4
       - name: Setup cluster
         run: |
-          cometbft init node1
-          cometbft init node2
+          for i in {1..2}; do
+            cometbft init --home node$i
+            P2P_PORT=$((26656+(i-1)*10))
+            RPC_PORT=$((26657+(i-1)*10))
+            BFT_PORT=$((26658+(i-1)*10))
+            sed -i -e "s#unsafe = false#unsafe = true#" -e "s#laddr = \"tcp://0.0.0.0:26656\"#laddr = \"tcp://0.0.0.0:${P2P_PORT}\"#" -e "s#laddr = \"tcp://127.0.0.1:26657\"#laddr = \"tcp://127.0.0.1:${RPC_PORT}\"#" -e "s#proxy_app = \"tcp://127.0.0.1:26658\"#proxy_app = \"tcp://127.0.0.1:${BFT_PORT}\"#" node$i/config/config.toml
+          done
+          cp node1/config/genesis.json node2/config/genesis.json
+          cargo b --release
+          cargo t
+          cp target/release/vote-cometbft $GOBIN
+          for i in {1..2}; do
+            cp zcv.toml node$i
+            cp zcvlib/vote.db node$i
+            RPC_PORT=$((26657+(i-1)*10))
+            BFT_PORT=$((26658+(i-1)*10))
+            GRPC_PORT=$((9010+(i-1)*10))
+            sed -i -e "s#26657#${RPC_PORT}#" -e "s#26658#${BFT_PORT}#" -e "s#9010#${GRPC_PORT}#" node$i/zcv.toml
+          done
+          cometbft start --home node1 >/dev/null &
+          (cd node1; vote-cometbft  >/dev/null &)
+          echo "Chain should start with one validator"
+          sleep 10
+          HEIGHT1=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          PK=$(cat node2/config/priv_validator_key.json | jq .pub_key.value)
+          NODE2_ID=$(cometbft show-node-id --home node2)
+          echo $PK
+          grpcurl --plaintext --proto zcvlib/protos/vote.proto -d "{\"pub_key\": $PK, \"power\": \"10\"}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/AddValidator
+          echo "Chain should hang now since we added a validator"
+          sleep 10
+          HEIGHT2a=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          sleep 10
+          HEIGHT2b=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          echo "Starting 2nd validator"
+          cometbft start --home node2 >/dev/null &
+          (cd node2; vote-cometbft >/dev/null &)
+          sleep 10
+          echo "Tell node1 to connect to node2"
+          curl -s "localhost:26657/dial_peers?peers=%5B%22${NODE2_ID}%40127.0.0.1%3A26666%22%5D&persistent=true"
+          sleep 10
+          echo "Chain should restart now"
+          curl -s "localhost:26657/validators"
+          curl -s "localhost:26657/net_info"
+          sleep 10
+          HEIGHT3=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          echo
+          echo $HEIGHT1
+          echo $HEIGHT2a
+          echo $HEIGHT2b
+          echo $HEIGHT3
+          if [[ $HEIGHT1 -gt $HEIGHT2a ]]; then
+            exit 1
+          fi
+          if [[ $HEIGHT2a -ne $HEIGHT2b ]]; then
+            exit 1
+          fi
+          if [[ $HEIGHT2b -gt $HEIGHT3 ]]; then
+            exit 1
+          fi
+
