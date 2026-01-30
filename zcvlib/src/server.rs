@@ -199,6 +199,7 @@ impl Application for Server {
                                 }
                                 TypeOneof::AddValidator(add_validator) => {
                                     let Validator { pub_key, power } = add_validator;
+                                    tracing::info!("ADD VALIDATOR {} {}", hex::encode(&pub_key), power);
                                     let pub_key = PublicKey {
                                         sum: Some(Sum::Ed25519(pub_key)),
                                     };
@@ -252,7 +253,7 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
         "params": [tx_data]
     });
     tracing::info!("submit_tx");
-    let url = format!("http://127.0.0.1:{port}/v1");
+    let url = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let rep = client
         .post(&url)
