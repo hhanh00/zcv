@@ -7,11 +7,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    context::Context,
-    server::submit_tx,
-    vote_rpc::{
-        Ballot, Empty, Hash, VoteHeight, VoteMessage, VoteRange, vote_streamer_server::VoteStreamer,
-    },
+    context::Context, error::IntoAnyhow, server::submit_tx, vote_rpc::{
+        Ballot, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
+        vote_message::TypeOneof, vote_streamer_server::VoteStreamer,
+    }
 };
 
 pub struct ZCVServer {
@@ -20,6 +19,23 @@ pub struct ZCVServer {
 
 #[async_trait]
 impl VoteStreamer for ZCVServer {
+    async fn add_validator(&self, request: Request<Validator>) -> Result<Response<Empty>, Status> {
+        let validator = request.into_inner();
+        let m = VoteMessage {
+            type_oneof: Some(TypeOneof::AddValidator(validator)),
+        };
+        self.submit(m).await?;
+        Ok(Response::new(Empty {}))
+    }
+
+    async fn start(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
+        let m = VoteMessage {
+            type_oneof: Some(TypeOneof::Start(0)),
+        };
+        self.submit(m).await?;
+        Ok(Response::new(Empty {}))
+    }
+
     async fn get_latest_vote_height(
         &self,
         _request: Request<Empty>,
@@ -67,18 +83,28 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let ballot = request.into_inner();
             let m = VoteMessage {
-                type_oneof: Some(crate::vote_rpc::vote_message::TypeOneof::Ballot(ballot)),
+                type_oneof: Some(TypeOneof::Ballot(ballot)),
             };
-            let comet_port = {
-                let c = self.context.lock().await;
-                c.cometrpc_port
-            };
-            let json = submit_tx(m.encode_to_vec().as_slice(), comet_port).await?;
+            let json = self.submit(m).await?;
             tracing::info!("{json:?}");
             let hash = Hash { hash: vec![] };
             Ok(Response::new(hash))
         };
         res.await.map_err(to_tonic)
+    }
+}
+
+impl ZCVServer {
+    async fn submit(&self, m: VoteMessage) -> Result<serde_json::Value, Status> {
+        let comet_port = {
+            let c = self.context.lock().await;
+            c.cometrpc_port
+        };
+        let json = submit_tx(m.encode_to_vec().as_slice(), comet_port)
+            .await
+            .anyhow()
+            .map_err(to_tonic)?;
+        Ok(json)
     }
 }
 

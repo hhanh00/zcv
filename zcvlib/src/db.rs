@@ -300,7 +300,7 @@ pub async fn store_ballot(
     height: u32,
     itx: u32,
     ballot: Ballot,
-) -> ZCVResult<()> {
+) -> ZCVResult<u32> {
     let Ballot { data, witnesses } = ballot;
     let domain = &data.domain;
     let mut data_bytes = vec![];
@@ -308,7 +308,7 @@ pub async fn store_ballot(
     let mut witnesses_bytes = vec![];
     witnesses.write(&mut witnesses_bytes).anyhow()?;
 
-    query(
+    let r = query(
         "INSERT INTO ballots(height, itx, question, data, witness)
     SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
     WHERE domain = ?5 ON CONFLICT DO NOTHING",
@@ -320,7 +320,7 @@ pub async fn store_ballot(
     .bind(domain.as_slice())
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(r.rows_affected() as u32)
 }
 
 pub async fn fetch_ballots(

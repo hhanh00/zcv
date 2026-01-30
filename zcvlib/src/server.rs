@@ -3,7 +3,7 @@ use crate::{
     context::Context,
     db::{get_apphash, get_election, store_apphash, store_ballot},
     error::IntoAnyhow,
-    vote_rpc::{AddValidator, VoteMessage, vote_message::TypeOneof},
+    vote_rpc::{Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -182,13 +182,14 @@ impl Application for Server {
                                 TypeOneof::Ballot(ballot) => {
                                     let ballot =
                                         orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
-                                    store_ballot(
+                                    let rows_added = store_ballot(
                                         &mut db_tx,
                                         state.start_height + height as u32,
                                         itx as u32,
                                         ballot,
                                     )
                                     .await?;
+                                    assert_eq!(rows_added, 1);
                                 }
                                 TypeOneof::Start(_) => {
                                     state.started = true;
@@ -197,7 +198,7 @@ impl Application for Server {
                                         .await?;
                                 }
                                 TypeOneof::AddValidator(add_validator) => {
-                                    let AddValidator { pub_key, power } = add_validator;
+                                    let Validator { pub_key, power } = add_validator;
                                     let pub_key = PublicKey {
                                         sum: Some(Sum::Ed25519(pub_key)),
                                     };
