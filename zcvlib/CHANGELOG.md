@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.3.0...zcvlib-v0.4.0) (2026-01-31)
+
+
+### Features
+
+* add memo encryption ([#65](https://github.com/hhanh00/zcv/issues/65)) ([f694cbc](https://github.com/hhanh00/zcv/commit/f694cbcf98c20c616d0bd835bc3a62406ce6ce72))
+* add support for dynamically added validators ([#71](https://github.com/hhanh00/zcv/issues/71)) ([9faacfc](https://github.com/hhanh00/zcv/commit/9faacfc0988ad42eb95e31a38b8223931e3d3786))
+* binary ballot serialization ([#67](https://github.com/hhanh00/zcv/issues/67)) ([4005433](https://github.com/hhanh00/zcv/commit/4005433531bf78a61e2a797e25d6f994fc6b7a12))
+* collapse votes to a question to a single address ([#63](https://github.com/hhanh00/zcv/issues/63)) ([d5db8cf](https://github.com/hhanh00/zcv/commit/d5db8cff08f75cb79bbdd74a88f9c5fccecf6765))
+* expose validator API to GRPC ([#73](https://github.com/hhanh00/zcv/issues/73)) ([fd3e76b](https://github.com/hhanh00/zcv/commit/fd3e76bfe09f7a27f636eee07dfff9c21fcd6aeb))
+* grpc vote service ([#69](https://github.com/hhanh00/zcv/issues/69)) ([eaa231f](https://github.com/hhanh00/zcv/commit/eaa231f6c179990fa34b1c886b11cf6ce90c732b))
+* improve error message reporting of add_validator ([#76](https://github.com/hhanh00/zcv/issues/76)) ([d8213f2](https://github.com/hhanh00/zcv/commit/d8213f20f27126298b0beecebe02877f0204f234))
+* plurality voting ([#66](https://github.com/hhanh00/zcv/issues/66)) ([e228ce3](https://github.com/hhanh00/zcv/commit/e228ce3450dd0576b199a762f0695eaf4d88d0eb))
+* set the election data via GRPC ([#79](https://github.com/hhanh00/zcv/issues/79)) ([200004c](https://github.com/hhanh00/zcv/commit/200004cc3cfb911fb2f0979de4998f7139ef1488))
+* set voting seed api ([#82](https://github.com/hhanh00/zcv/issues/82)) ([3110a23](https://github.com/hhanh00/zcv/commit/3110a238f5ffd9b61e57994ebb170fadeac3bf70))
+* set_election rpc (rpc only) ([#77](https://github.com/hhanh00/zcv/issues/77)) ([d291f61](https://github.com/hhanh00/zcv/commit/d291f61de7e2d6db4362e71141018fdd8a551377))
+* use figment for config file parsing ([#70](https://github.com/hhanh00/zcv/issues/70)) ([099141b](https://github.com/hhanh00/zcv/commit/099141b1237ba01717e748c0b63bb93896a5b2c5))
+* voter app graphql cli ([#81](https://github.com/hhanh00/zcv/issues/81)) ([25bb419](https://github.com/hhanh00/zcv/commit/25bb4197de9100afe06fdcfcf834824dccd1635f))
+
+
+### Bug Fixes
+
+* cometbft integration test ([#68](https://github.com/hhanh00/zcv/issues/68)) ([5aae7c9](https://github.com/hhanh00/zcv/commit/5aae7c941ce169b0de35ede0e015a1101104ea01))
+* test ballot ([#72](https://github.com/hhanh00/zcv/issues/72)) ([5b3f98e](https://github.com/hhanh00/zcv/commit/5b3f98ece651145400a6c7be177b50e98458d3b4))
+
 ## [0.3.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.2.0...zcvlib-v0.3.0) (2026-01-24)
 
 
