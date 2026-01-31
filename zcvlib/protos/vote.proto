@@ -6,7 +6,7 @@ message Empty {}
 message VoteMessage {
     oneof type_oneof {
         Validator add_validator = 1;
-        SetElection set_election = 2;
+        Election set_election = 2;
         uint32 start = 3;
         Ballot ballot = 4;
     }
@@ -17,7 +17,7 @@ message Validator {
     uint32 power = 2;
 }
 
-message SetElection {
+message Election {
     string election = 1;
 }
 
@@ -43,6 +43,7 @@ message Hash {
 }
 
 service VoteStreamer {
+    rpc SetElection(Election) returns (Hash) {}
     rpc AddValidator(Validator) returns (Empty) {}
     rpc Start(Empty) returns (Empty) {}
     rpc GetLatestVoteHeight(Empty) returns (VoteHeight) {}
