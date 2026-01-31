@@ -9,6 +9,10 @@ description = "A rust library to coin weighted voting for Zcash"
 name = "vote-cometbft"
 path = "src/cometapp.rs"
 
+[[bin]]
+name = "voter"
+path = "src/voter-cli.rs"
+
 [dependencies]
 orchard = { workspace = true }
 figment = { workspace = true }
@@ -44,6 +48,14 @@ tendermint = { workspace = true }
 tendermint-proto = { workspace = true }
 reqwest = { workspace = true }
 base64 = { workspace = true }
+
+juniper = { workspace = true }
+juniper_warp = { workspace = true }
+juniper_graphql_ws = { workspace = true }
+warp = { workspace = true }
+bigdecimal = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
