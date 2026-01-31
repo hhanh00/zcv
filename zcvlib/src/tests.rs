@@ -8,7 +8,7 @@ use zcash_protocol::consensus::Network;
 use hex_literal::hex;
 
 use crate::{
-    ZCVResult, ballot::encrypt_ballot_data, context::Context, db::{create_schema, set_account_seed}, lwd::{connect, scan_blocks}, pod::ElectionProps
+    ZCVResult, ballot::encrypt_ballot_data, context::Context, db::{create_schema, set_account_seed, store_election}, lwd::{connect, scan_blocks}, pod::ElectionProps
 };
 
 pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
@@ -72,7 +72,7 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     });
     let e: ElectionProps = serde_json::from_value(e).unwrap();
     let e = e.build()?;
-    e.store(conn).await?;
+    store_election(conn, &e).await?;
     Ok(())
 }
 
