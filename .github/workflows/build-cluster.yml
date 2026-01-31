@@ -41,11 +41,9 @@ jobs:
           done
           cp node1/config/genesis.json node2/config/genesis.json
           cargo b --release
-          cargo t
           cp target/release/vote-cometbft $GOBIN
           for i in {1..2}; do
             cp zcv.toml node$i
-            cp zcvlib/vote.db node$i
             RPC_PORT=$((26657+(i-1)*10))
             BFT_PORT=$((26658+(i-1)*10))
             GRPC_PORT=$((9010+(i-1)*10))
@@ -55,6 +53,8 @@ jobs:
           (cd node1; vote-cometbft  >/dev/null &)
           echo "Chain should start with one validator"
           sleep 10
+          ./tests/submit_election.sh
+          sleep 5
           HEIGHT1=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
           PK=$(cat node2/config/priv_validator_key.json | jq .pub_key.value)
           NODE2_ID=$(cometbft show-node-id --home node2)
@@ -82,13 +82,11 @@ jobs:
           echo $HEIGHT2a
           echo $HEIGHT2b
           echo $HEIGHT3
-          if [[ $HEIGHT1 -gt $HEIGHT2a ]]; then
-            exit 1
-          fi
-          if [[ $HEIGHT2a -ne $HEIGHT2b ]]; then
-            exit 1
-          fi
-          if [[ $HEIGHT2b -gt $HEIGHT3 ]]; then
-            exit 1
-          fi
-
+          [[ $HEIGHT1 -le $HEIGHT2a ]]
+          [[ $HEIGHT2a -eq $HEIGHT2b ]]
+          [[ $HEIGHT2b -le $HEIGHT3 ]]
+          ./tests/submit_ballots.sh
+          sleep 10
+          export COUNT=$(sqlite3 node1/vote.db "SELECT COUNT(*) FROM ballots")
+          echo $COUNT
+          [[ $COUNT -gt 0 ]]
