@@ -7,10 +7,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    context::Context, error::IntoAnyhow, server::submit_tx, vote_rpc::{
+    context::Context,
+    error::IntoAnyhow,
+    server::submit_tx,
+    vote_rpc::{
         Ballot, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
         vote_message::TypeOneof, vote_streamer_server::VoteStreamer,
-    }
+    },
 };
 
 pub struct ZCVServer {
@@ -20,12 +23,15 @@ pub struct ZCVServer {
 #[async_trait]
 impl VoteStreamer for ZCVServer {
     async fn add_validator(&self, request: Request<Validator>) -> Result<Response<Empty>, Status> {
-        let validator = request.into_inner();
-        let m = VoteMessage {
-            type_oneof: Some(TypeOneof::AddValidator(validator)),
+        let res = async move {
+            let validator = request.into_inner();
+            let m = VoteMessage {
+                type_oneof: Some(TypeOneof::AddValidator(validator)),
+            };
+            self.submit(m).await?;
+            Ok::<_, anyhow::Error>(Response::new(Empty {}))
         };
-        self.submit(m).await?;
-        Ok(Response::new(Empty {}))
+        res.await.map_err(to_tonic)
     }
 
     async fn start(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
@@ -100,14 +106,25 @@ impl ZCVServer {
             let c = self.context.lock().await;
             c.cometrpc_port
         };
-        let json = submit_tx(m.encode_to_vec().as_slice(), comet_port)
+        let res = submit_tx(m.encode_to_vec().as_slice(), comet_port)
             .await
             .anyhow()
             .map_err(to_tonic)?;
-        Ok(json)
+        if res.pointer("/error").is_some() {
+            let error_message = res
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            return Err(Status::internal(error_message));
+        }
+        Ok(res)
     }
 }
 
 pub fn to_tonic(e: anyhow::Error) -> tonic::Status {
+    if let Some(status) = e.downcast_ref::<Status>() {
+        return status.clone();
+    }
     tonic::Status::internal(e.to_string())
 }

@@ -10,7 +10,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use parking_lot::Mutex;
 use prost::Message;
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::{Acquire, SqlitePool, query, query_as};
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
@@ -97,7 +97,9 @@ impl Application for Server {
                     TypeOneof::AddValidator(_) => {
                         let state = self.state.lock();
                         if state.started {
-                            return Err(ZCVError::Any(anyhow!("Validators cannot be added once the blockchain is started.")));
+                            return Err(ZCVError::Any(anyhow!(
+                                "Validators cannot be added once the blockchain is started."
+                            )));
                         }
                     }
                     TypeOneof::Start(_) => {
@@ -113,6 +115,7 @@ impl Application for Server {
         };
 
         if let Err(err) = check() {
+            tracing::info!("check_tx: {}", err.to_string());
             return ResponseCheckTx {
                 code: 1,
                 data: tx,
@@ -199,7 +202,6 @@ impl Application for Server {
                                 }
                                 TypeOneof::AddValidator(add_validator) => {
                                     let Validator { pub_key, power } = add_validator;
-                                    tracing::info!("ADD VALIDATOR {} {}", hex::encode(&pub_key), power);
                                     let pub_key = PublicKey {
                                         sum: Some(Sum::Ed25519(pub_key)),
                                     };
@@ -262,7 +264,27 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
         .send()
         .await?
         .error_for_status()?;
-    let json_rep: Value = rep.json().await?;
+    // broadcast_tx_sync returns the result of check_tx
+    // .result.{code, log}
+    // promote the log into an error message if code is not 0
+    let mut json_rep: Value = rep.json().await?;
+    if let Some(code) = json_rep.pointer("/result/code").and_then(|v| v.as_i64())
+        && code != 0
+    {
+        let message = json_rep
+            .pointer("/result/log")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        json_rep = json!({
+            "id": "",
+            "error": {
+                "code": code,
+                "message": message
+            }
+        });
+    }
+
     Ok(json_rep)
 }
 
