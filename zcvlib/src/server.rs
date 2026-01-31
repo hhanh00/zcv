@@ -3,6 +3,7 @@ use crate::{
     context::Context,
     db::{get_apphash, get_election, store_apphash, store_ballot},
     error::IntoAnyhow,
+    pod::ElectionPropsPub,
     vote_rpc::{Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::anyhow;
@@ -87,43 +88,53 @@ impl Application for Server {
         let RequestCheckTx { mut tx, .. } = request;
         let mut check = || {
             let msg = VoteMessage::decode(&mut tx)?;
-            if let Some(m) = msg.type_oneof {
-                match m {
-                    TypeOneof::Ballot(ballot) => {
-                        let mut state = self.state.lock();
-                        let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
-                        state.check_ballot(ballot)?;
-                    }
-                    TypeOneof::AddValidator(_) => {
-                        let state = self.state.lock();
-                        if state.started {
-                            return Err(ZCVError::Any(anyhow!(
-                                "Validators cannot be added once the blockchain is started."
-                            )));
-                        }
-                    }
-                    TypeOneof::Start(_) => {
-                        let state = self.state.lock();
-                        if state.started {
-                            return Err(ZCVError::Any(anyhow!("Blockchain already started.")));
-                        }
-                    }
-                    _ => {}
+            let msg = msg.type_oneof.ok_or(anyhow!("Must have payload"))?;
+            let res = match msg {
+                TypeOneof::SetElection(election) => {
+                    let election: ElectionPropsPub = serde_json::from_str(&election.election)?;
+                    election.hash()?.to_vec()
                 }
-            }
-            Ok::<_, ZCVError>(())
+                TypeOneof::Ballot(ballot) => {
+                    let mut state = self.state.lock();
+                    let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                    let hash = ballot.data.sighash()?;
+                    state.check_ballot(ballot)?;
+                    hash
+                }
+                TypeOneof::AddValidator(v) => {
+                    let state = self.state.lock();
+                    if state.started {
+                        anyhow::bail!("Validators cannot be added once the blockchain is started.");
+                    }
+                    v.pub_key
+                }
+                TypeOneof::Start(_) => {
+                    let state = self.state.lock();
+                    if state.started {
+                        anyhow::bail!("Blockchain already started.");
+                    }
+                    Vec::new()
+                }
+            };
+            Ok::<_, anyhow::Error>(res)
         };
 
-        if let Err(err) = check() {
-            tracing::info!("check_tx: {}", err.to_string());
-            return ResponseCheckTx {
-                code: 1,
-                data: tx,
-                log: err.to_string(),
+        match check() {
+            Ok(data) => ResponseCheckTx {
+                code: 0,
+                data: data.into(),
                 ..Default::default()
-            };
+            },
+            Err(err) => {
+                tracing::info!("check_tx: {}", err.to_string());
+                ResponseCheckTx {
+                    code: 1,
+                    data: tx,
+                    log: err.to_string(),
+                    ..Default::default()
+                }
+            }
         }
-        Default::default()
     }
 
     // Select txs to include in a block
@@ -180,47 +191,49 @@ impl Application for Server {
                     hasher.update(&tx_copy);
                     let finalize = async {
                         let msg = VoteMessage::decode(&mut tx)?;
-                        if let Some(m) = msg.type_oneof {
-                            match m {
-                                TypeOneof::Ballot(ballot) => {
-                                    let ballot =
-                                        orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
-                                    let rows_added = store_ballot(
-                                        &mut db_tx,
-                                        state.start_height + height as u32,
-                                        itx as u32,
-                                        ballot,
-                                    )
+                        // expect was checked by check_tx
+                        let m = msg.type_oneof.expect("VoteMessage must have content");
+                        match m {
+                            TypeOneof::SetElection(election) => {
+                                let _election: ElectionPropsPub =
+                                    serde_json::from_str(&election.election)?;
+                            }
+                            TypeOneof::Ballot(ballot) => {
+                                let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                                let hash = ballot.data.sighash()?;
+                                let rows_added = store_ballot(
+                                    &mut db_tx,
+                                    state.start_height + height as u32,
+                                    itx as u32,
+                                    ballot,
+                                )
+                                .await?;
+                                if rows_added != 1 {
+                                    tracing::info!("Tx already inserted {}", hex::encode(&hash));
+                                }
+                            }
+                            TypeOneof::Start(_) => {
+                                state.started = true;
+                                query("UPDATE state SET started = 1 WHERE id = 0")
+                                    .execute(&mut *db_tx)
                                     .await?;
-                                    assert_eq!(rows_added, 1);
-                                }
-                                TypeOneof::Start(_) => {
-                                    state.started = true;
-                                    query("UPDATE state SET started = 1 WHERE id = 0")
-                                        .execute(&mut *db_tx)
-                                        .await?;
-                                }
-                                TypeOneof::AddValidator(add_validator) => {
-                                    let Validator { pub_key, power } = add_validator;
-                                    let pub_key = PublicKey {
-                                        sum: Some(Sum::Ed25519(pub_key)),
-                                    };
-                                    let v = ValidatorUpdate {
-                                        pub_key: Some(pub_key),
-                                        power: power as i64,
-                                    };
-                                    validator_updates.push(v);
-                                }
-                                _ => {}
+                            }
+                            TypeOneof::AddValidator(add_validator) => {
+                                let Validator { pub_key, power } = add_validator;
+                                let pub_key = PublicKey {
+                                    sum: Some(Sum::Ed25519(pub_key)),
+                                };
+                                let v = ValidatorUpdate {
+                                    pub_key: Some(pub_key),
+                                    power: power as i64,
+                                };
+                                validator_updates.push(v);
                             }
                         }
-                        Ok::<_, ZCVError>(())
+                        Ok::<_, anyhow::Error>(())
                     };
                     let result = match finalize.await {
-                        Ok(_) => ExecTxResult {
-                            code: 0,
-                            ..ExecTxResult::default()
-                        },
+                        Ok(_) => ExecTxResult::default(),
                         Err(error) => ExecTxResult {
                             code: 1,
                             data: tx_copy,
@@ -254,7 +267,6 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
         "method": "broadcast_tx_sync",
         "params": [tx_data]
     });
-    tracing::info!("submit_tx");
     let url = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let rep = client
@@ -268,14 +280,26 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     // .result.{code, log}
     // promote the log into an error message if code is not 0
     let mut json_rep: Value = rep.json().await?;
+    tracing::info!("submit_tx: {:?}", json_rep);
     if let Some(code) = json_rep.pointer("/result/code").and_then(|v| v.as_i64())
         && code != 0
     {
-        let message = json_rep
-            .pointer("/result/log")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let message =
+            json_rep.pointer("/result/log").and_then(|v| v.as_str());
+        let message = message.unwrap_or_default().to_string();
+        json_rep = json!({
+            "id": "",
+            "error": {
+                "code": code,
+                "message": message
+            }
+        });
+    }
+    if let Some(code) = json_rep.pointer("/error/code").and_then(|v| v.as_i64())
+    {
+        let message =
+            json_rep.pointer("/error/data").and_then(|v| v.as_str());
+        let message = message.unwrap_or_default().to_string();
         json_rep = json!({
             "id": "",
             "error": {

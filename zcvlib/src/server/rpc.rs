@@ -11,7 +11,7 @@ use crate::{
     error::IntoAnyhow,
     server::submit_tx,
     vote_rpc::{
-        Ballot, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
+        Ballot, Election, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
         vote_message::TypeOneof, vote_streamer_server::VoteStreamer,
     },
 };
@@ -22,6 +22,24 @@ pub struct ZCVServer {
 
 #[async_trait]
 impl VoteStreamer for ZCVServer {
+    async fn set_election(&self, request: Request<Election>) -> Result<Response<Hash>, Status> {
+        let res = async move {
+            let election = request.into_inner();
+            let m = VoteMessage {
+                type_oneof: Some(TypeOneof::SetElection(election)),
+            };
+            let rep = self.submit(m).await?;
+            let hash = rep
+                .pointer("/result")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            Ok::<_, anyhow::Error>(Response::new(Hash {
+                hash: hex::decode(hash)?,
+            }))
+        };
+        res.await.map_err(to_tonic)
+    }
+
     async fn add_validator(&self, request: Request<Validator>) -> Result<Response<Empty>, Status> {
         let res = async move {
             let validator = request.into_inner();
@@ -92,8 +110,8 @@ impl VoteStreamer for ZCVServer {
                 type_oneof: Some(TypeOneof::Ballot(ballot)),
             };
             let json = self.submit(m).await?;
-            tracing::info!("{json:?}");
-            let hash = Hash { hash: vec![] };
+            let hash = json.pointer("/result/data").and_then(|v| v.as_str()).unwrap_or_default();
+            let hash = Hash { hash: hex::decode(hash)? };
             Ok(Response::new(hash))
         };
         res.await.map_err(to_tonic)
