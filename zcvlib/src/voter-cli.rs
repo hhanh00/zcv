@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
+use crate::voter::{Context, mutation::Mutation, query::Query};
 use anyhow::Result;
 use clap::Parser;
-use juniper::{EmptyMutation, EmptySubscription, RootNode};
+use juniper::{EmptySubscription, RootNode};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
-use crate::voter::{Context, query::Query};
 
 pub mod voter;
 
-type Schema = RootNode<Query, EmptyMutation<Context>, EmptySubscription<Context>>;
+type Schema = RootNode<Query, Mutation, EmptySubscription<Context>>;
 
 #[derive(Parser, Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -41,11 +41,7 @@ async fn main() -> Result<()> {
 
     let context = Context::new(&db_path, &lwd_url).await?;
 
-    let schema = Schema::new(
-        Query {},
-        EmptyMutation::default(),
-        EmptySubscription::default(),
-    );
+    let schema = Schema::new(Query {}, Mutation {}, EmptySubscription::default());
 
     let context_extractor = warp::any().map(move || context.clone());
 

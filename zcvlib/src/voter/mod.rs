@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
+use zcvlib::db::create_schema;
 
 pub mod sync;
 pub mod query;
+pub mod mutation;
 
 #[derive(Clone)]
 
@@ -13,6 +15,8 @@ pub struct Context {
     pub lwd_url: String,
 }
 
+impl juniper::Context for Context {}
+
 impl Context {
     pub async fn new(db_path: &str, lwd_url: &str) -> Result<Context> {
         let connect_options = SqliteConnectOptions::new()
@@ -20,6 +24,8 @@ impl Context {
             .busy_timeout(Duration::from_mins(1))
             .filename(db_path);
         let pool = SqlitePool::connect_with(connect_options).await?;
+        let mut conn = pool.acquire().await?;
+        create_schema(&mut conn).await?;
         Ok(Context {
             pool,
             lwd_url: lwd_url.to_string(),
