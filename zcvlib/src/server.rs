@@ -126,7 +126,7 @@ impl Application for Server {
                 ..Default::default()
             },
             Err(err) => {
-                tracing::info!("check_tx: {}", err.to_string());
+                tracing::info!("check_tx error: {}", err.to_string());
                 ResponseCheckTx {
                     code: 1,
                     data: tx,
@@ -295,7 +295,7 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
             }
         });
     }
-    if let Some(code) = json_rep.pointer("/error/code").and_then(|v| v.as_i64())
+    else if let Some(code) = json_rep.pointer("/error/code").and_then(|v| v.as_i64())
     {
         let message =
             json_rep.pointer("/error/data").and_then(|v| v.as_str());
