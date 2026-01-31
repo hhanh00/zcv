@@ -154,6 +154,58 @@ pub async fn set_account_seed(
     Ok(())
 }
 
+pub async fn store_election(
+    conn: &mut SqliteConnection,
+    election: &ElectionPropsPub,
+) -> ZCVResult<()> {
+    let hash = election.hash()?;
+    let json = serde_json::to_string(election).anyhow()?;
+    let (id_election,): (u32,) = query_as(
+        "INSERT INTO elections
+            (hash, apphash, start, end, need_sig, name, data)
+            VALUES (?, '', ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            start = excluded.start,
+            end = excluded.end,
+            need_sig = excluded.need_sig,
+            name = excluded.name,
+            data = excluded.data
+            RETURNING id_election",
+    )
+    .bind(hash.as_slice())
+    .bind(election.start)
+    .bind(election.end)
+    .bind(election.need_sig)
+    .bind(&election.name)
+    .bind(&json)
+    .fetch_one(&mut *conn)
+    .await?;
+    for (i, q) in election.questions.iter().enumerate() {
+        let q_js = serde_json::to_string(q).anyhow()?;
+        let domain = q.domain(election)?;
+        query(
+            "INSERT INTO questions
+                (election, idx, domain, address, title, subtitle, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT DO UPDATE SET
+                domain = excluded.domain,
+                address = excluded.address,
+                title = excluded.title,
+                subtitle = excluded.subtitle,
+                data = excluded.data",
+        )
+        .bind(id_election)
+        .bind(i as u32)
+        .bind(domain.to_repr().as_slice())
+        .bind(&q.address)
+        .bind(&q.title)
+        .bind(&q.subtitle)
+        .bind(q_js)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 pub async fn get_ivks(
     network: &Network,
     conn: &mut SqliteConnection,
@@ -197,11 +249,11 @@ pub async fn get_domain(
     Ok((domain, address))
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Vec<u8>> {
-    let (apphash,): (Vec<u8>,) = query_as("SELECT apphash FROM elections WHERE hash = ?1")
+pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Option<Vec<u8>>> {
+    let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM elections WHERE hash = ?1")
         .bind(hash)
-        .fetch_one(conn)
-        .await?;
+        .fetch_optional(conn)
+        .await?.map(|v| v.0);
     Ok(apphash)
 }
 
@@ -345,11 +397,13 @@ pub async fn get_ballot_range(
     end: u32,
     handler: impl AsyncFn(crate::vote_rpc::Ballot) -> ZCVResult<()>,
 ) -> ZCVResult<()> {
-    let mut s = query("SELECT height, itx, domain, data FROM ballots
-    WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx")
-        .bind(start)
-        .bind(end)
-        .fetch(&mut conn);
+    let mut s = query(
+        "SELECT height, itx, domain, data FROM ballots
+    WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx",
+    )
+    .bind(start)
+    .bind(end)
+    .fetch(&mut conn);
     while let Some(r) = s.next().await {
         if let Ok(r) = r {
             let height: u32 = r.get(0);
