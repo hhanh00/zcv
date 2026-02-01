@@ -498,7 +498,7 @@ mod tests {
             let h = ballot_data.sighash().anyhow()?;
             assert_eq!(
                 hex::encode(&h),
-                "ef001c3ac531a4378ea40688166d0b637362f35d6d77c3a93567f57c0da2e633"
+                "942bc20fdda82c173dd2cd38033a62c96ee7424e47dc1e214186cc5d179caa67"
             );
             count_ballot2 += 1;
             Ok(())

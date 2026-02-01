@@ -18,7 +18,7 @@ pub const ZCV_MNEMONIC_DOMAIN: &[u8] = b"ZCVote__Personal";
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ElectionProps {
-    pub secret_seed: String,
+    pub secret_seed: Option<String>,
     pub start: u32,
     pub end: u32,
     pub need_sig: bool,
@@ -29,7 +29,14 @@ pub struct ElectionProps {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct QuestionProp {
     pub title: String,
-    pub subtitle: String,
+    pub subtitle: Option<String>,
+    pub choices: Vec<ChoiceProp>,
+}
+
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
+pub struct ChoiceProp {
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
     pub answers: Vec<String>,
 }
 
@@ -48,7 +55,7 @@ pub struct QuestionPropPub {
     pub subtitle: String,
     pub index: usize,
     pub address: String,
-    pub answers: Vec<String>,
+    pub choices: Vec<ChoiceProp>,
 }
 
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
@@ -60,20 +67,20 @@ pub struct QuestionPropHashable {
     pub title: String,
     pub subtitle: String,
     pub index: usize,
-    pub answers: Vec<String>,
+    pub choices: Vec<ChoiceProp>,
 }
 
 pub const ZCV_HRP: &str = "zcv";
 
 impl ElectionProps {
-    pub fn build(self) -> ZCVResult<ElectionPropsPub> {
+    pub fn build(self, secret_seed: &str) -> ZCVResult<ElectionPropsPub> {
         let ElectionProps {
-            secret_seed,
             start,
             end,
             need_sig,
             name,
             questions,
+            ..
         } = self;
         let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
 
@@ -82,7 +89,7 @@ impl ElectionProps {
             let QuestionProp {
                 title,
                 subtitle,
-                answers,
+                choices,
             } = q;
 
             let q = QuestionPropHashable {
@@ -91,14 +98,14 @@ impl ElectionProps {
                 need_sig,
                 name: name.clone(),
                 title,
-                subtitle,
+                subtitle: subtitle.unwrap_or_default(),
                 index: iq,
-                answers: answers.clone(),
+                choices: choices.clone(),
             };
             let domain = q.calculate_domain()?;
 
             let sk = derive_question_sk(
-                &secret_seed,
+                secret_seed,
                 zcash_protocol::constants::mainnet::COIN_TYPE,
                 domain,
             )
@@ -114,7 +121,7 @@ impl ElectionProps {
                 subtitle: q.subtitle,
                 index: iq,
                 address,
-                answers,
+                choices,
             });
         }
         Ok(ElectionPropsPub {
@@ -145,7 +152,7 @@ impl QuestionPropPub {
             title: self.title.clone(),
             subtitle: self.subtitle.clone(),
             index: self.index,
-            answers: self.answers.clone(),
+            choices: self.choices.clone(),
         };
         q.calculate_domain()
     }
@@ -205,44 +212,18 @@ impl UTXO {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
-    use crate::pod::ElectionProps;
+    use crate::{
+        pod::ElectionProps,
+        tests::{TEST_ELECTION, TEST_ELECTION_HASH},
+    };
 
     #[test]
     fn test_election_parse() {
-        let e = json!({
-            "secret_seed": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-            "start": 3_000_000,
-            "end": 3_100_000,
-            "need_sig": true,
-            "name": "Test Election",
-            "questions": [
-                {
-                    "title": "Q1. What is your favorite color?",
-                    "subtitle": "",
-                    "answers": ["Red", "Green", "Blue"]
-                },
-                {
-                    "title": "Q2. Is the earth flat?",
-                    "subtitle": "",
-                    "answers": ["Yes", "No"]
-                },
-                {
-                    "title": "Q3. Do you like pizza?",
-                    "subtitle": "",
-                    "answers": ["Yes", "No"]
-                },
-            ]
-        });
-        let e: ElectionProps = serde_json::from_value(e).unwrap();
-        let epub = e.build().unwrap();
+        let e = TEST_ELECTION;
+        let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
+        let epub = e.build("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about").unwrap();
 
         let hash = epub.hash().unwrap();
-        assert_eq!(
-            hash,
-            *hex::decode("8e3fbdd6b559040f6d6d0da90ca75605c0c6f8acd96570b00b8ff9475244e7e1")
-                .unwrap()
-        );
+        assert_eq!(hash, TEST_ELECTION_HASH);
     }
 }
