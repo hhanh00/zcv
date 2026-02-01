@@ -6,7 +6,7 @@ and then passed to the GraphQL query `compileElectionDef`.
 This is when you specify the election seed phrase
 and produce the ElectionProps JSON.
 The later is sent to the blockchain via the SetElection
-GRPC during bootstrap (see `submit_election.sh for
+GRPC during bootstrap (see `submit_election.sh` for
 the example using `grpcurl`[^1]).
 
 Test Ballots are produced in code because they are

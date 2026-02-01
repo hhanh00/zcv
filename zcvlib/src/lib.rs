@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 pub mod error;
 pub mod pod;
 pub mod context;
@@ -7,6 +9,8 @@ pub mod lwd;
 pub mod balance;
 pub mod ballot;
 pub mod server;
+pub mod api;
+pub mod frb_generated;
 
 #[path = "cash.z.wallet.sdk.rpc.rs"]
 pub mod rpc;
