@@ -37,7 +37,8 @@ pub async fn scan_blocks(
     network: &Network,
     conn: &mut SqliteConnection,
     client: &mut Client,
-    id_election: u32,
+    hash: &[u8],
+    id_account: u32,
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
@@ -46,10 +47,11 @@ pub async fn scan_blocks(
     query("DELETE FROM spends").execute(&mut *db_tx).await?;
 
     let domains = query(
-        "SELECT id_question, domain FROM questions
-        WHERE election = ?1 ORDER BY idx",
+        "SELECT q.id_question, q.domain FROM questions q
+        JOIN elections e ON e.id_election = q.election
+        WHERE e.hash = ?1 ORDER BY q.idx",
     )
-    .bind(id_election)
+    .bind(hash)
     .map(|r: SqliteRow| {
         let idx: u32 = r.get(0);
         let d: Vec<u8> = r.get(1);
@@ -60,7 +62,7 @@ pub async fn scan_blocks(
     .await?;
     info!("{} questions", domains.len());
 
-    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx).await?;
+    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
     let ivks = [
         (0, PreparedIncomingViewingKey::new(&eivk)),
         (1, PreparedIncomingViewingKey::new(&iivk)),
