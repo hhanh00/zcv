@@ -1,20 +1,39 @@
 PODS:
+  - file_picker (0.0.1):
+    - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - rive_native (0.0.1):
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - zcvlib (0.0.1):
     - FlutterMacOS
 
 DEPENDENCIES:
+  - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - rive_native (from `Flutter/ephemeral/.symlinks/plugins/rive_native/macos`)
+  - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - zcvlib (from `Flutter/ephemeral/.symlinks/plugins/zcvlib/macos`)
 
 EXTERNAL SOURCES:
+  file_picker:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_picker/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  rive_native:
+    :path: Flutter/ephemeral/.symlinks/plugins/rive_native/macos
+  shared_preferences_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
   zcvlib:
     :path: Flutter/ephemeral/.symlinks/plugins/zcvlib/macos
 
 SPEC CHECKSUMS:
+  file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  rive_native: ca6867a346588838584c59edfa4d02bc63ca0965
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   zcvlib: d5f4b5212cd0d958a63fdf549b02ab292f77ec4a
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
