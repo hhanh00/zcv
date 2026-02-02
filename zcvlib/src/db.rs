@@ -157,7 +157,7 @@ pub async fn set_account_seed(
 pub async fn store_election(
     conn: &mut SqliteConnection,
     election: &ElectionPropsPub,
-) -> ZCVResult<()> {
+) -> ZCVResult<u32> {
     let hash = election.hash()?;
     let json = serde_json::to_string(election).anyhow()?;
     let (id_election,): (u32,) = query_as(
@@ -203,7 +203,7 @@ pub async fn store_election(
         .execute(&mut *conn)
         .await?;
     }
-    Ok(())
+    Ok(id_election)
 }
 
 pub async fn get_ivks(

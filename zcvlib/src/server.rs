@@ -1,6 +1,6 @@
 use crate::{
     ZCVError, ZCVResult,
-    context::Context,
+    context::BFTContext,
     db::{get_apphash, store_apphash, store_ballot, store_election},
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -321,13 +321,13 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
 }
 
 pub async fn run_cometbft_app(
-    context: Arc<tokio::sync::Mutex<Context>>,
+    context: Arc<tokio::sync::Mutex<BFTContext>>,
     hash: &[u8],
     port: u16,
 ) -> ZCVResult<()> {
     let pool = {
         let c = context.lock().await;
-        c.pool.clone()
+        c.context.pool.clone()
     };
     let app = Server::new(pool, hash).await?;
     let server = ServerBuilder::new(1_000_000)

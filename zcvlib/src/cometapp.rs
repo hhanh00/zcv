@@ -9,7 +9,7 @@ use serde::Deserialize;
 use tokio::{sync::Mutex, task::LocalSet};
 use tonic::transport::Server;
 use zcvlib::{
-    ZCVError, context::Context, db::create_schema, server::{rpc::ZCVServer, run_cometbft_app}, vote_rpc::vote_streamer_server::VoteStreamerServer
+    ZCVError, context::BFTContext, db::create_schema, server::{rpc::ZCVServer, run_cometbft_app}, vote_rpc::vote_streamer_server::VoteStreamerServer
 };
 
 #[derive(Deserialize)]
@@ -34,7 +34,7 @@ pub async fn main() -> Result<()> {
         hash,
     } = config;
     let hash = hex::decode(&hash)?;
-    let context = Context::new(&db_path, &lwd_url, cometrpc_port).await?;
+    let context = BFTContext::new(&db_path, &lwd_url, cometrpc_port).await?;
     {
         let mut conn = context.connect().await?;
         create_schema(&mut conn).await?;

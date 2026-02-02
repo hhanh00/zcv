@@ -12,7 +12,7 @@ use zcash_protocol::consensus::Network;
 use crate::{
     ZCVResult,
     ballot::encrypt_ballot_data,
-    context::Context,
+    context::BFTContext,
     db::{create_schema, set_account_seed, store_election},
     lwd::{connect, scan_blocks},
     pod::ElectionProps,
@@ -48,8 +48,8 @@ pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
         ]
     }));
 
-pub async fn test_context() -> Result<Context> {
-    let ctx = Context::new("vote.db", "", 0).await?;
+pub async fn test_context() -> Result<BFTContext> {
+    let ctx = BFTContext::new("vote.db", "", 0).await?;
     Ok(ctx)
 }
 

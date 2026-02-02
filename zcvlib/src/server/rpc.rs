@@ -7,7 +7,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    context::Context,
+    context::BFTContext,
     error::IntoAnyhow,
     server::submit_tx,
     vote_rpc::{
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub struct ZCVServer {
-    pub context: Arc<Mutex<Context>>,
+    pub context: Arc<Mutex<BFTContext>>,
 }
 
 #[async_trait]
@@ -87,7 +87,7 @@ impl VoteStreamer for ZCVServer {
             let VoteRange { start, end } = request;
             let conn = {
                 let c = self.context.lock().await;
-                c.pool.acquire().await?.detach()
+                c.context.pool.acquire().await?.detach()
             };
             let (tx, rx) = mpsc::channel::<Result<Ballot, Status>>(1);
             crate::db::get_ballot_range(conn, start, end, async move |b| {

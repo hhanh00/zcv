@@ -1,38 +1,11 @@
-use std::time::Duration;
-
-use anyhow::Result;
-use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
-use zcvlib::db::create_schema;
+use zcvlib::api::Context;
 
 pub mod sync;
 pub mod query;
 pub mod mutation;
 
 #[derive(Clone)]
+pub struct GQLContext(pub Context);
 
-pub struct Context {
-    pub pool: SqlitePool,
-    pub lwd_url: String,
-}
+impl juniper::Context for GQLContext {}
 
-impl juniper::Context for Context {}
-
-impl Context {
-    pub async fn new(db_path: &str, lwd_url: &str) -> Result<Context> {
-        let connect_options = SqliteConnectOptions::new()
-            .create_if_missing(true)
-            .busy_timeout(Duration::from_mins(1))
-            .filename(db_path);
-        let pool = SqlitePool::connect_with(connect_options).await?;
-        let mut conn = pool.acquire().await?;
-        create_schema(&mut conn).await?;
-        Ok(Context {
-            pool,
-            lwd_url: lwd_url.to_string(),
-        })
-    }
-
-    pub async fn connect(&self) -> Result<PoolConnection<Sqlite>> {
-        Ok(self.pool.acquire().await?)
-    }
-}
