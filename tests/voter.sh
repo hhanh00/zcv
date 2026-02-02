@@ -17,3 +17,10 @@ BALANCE=$(gq -l --format=json http://127.0.0.1:8000/graphql \
 | jq -r .data.getBalance)
 printf '<%s>\n' "$BALANCE"
 [[ $BALANCE == "0.01169078" ]]
+
+gq http://127.0.0.1:8000/graphql \
+-q '
+mutation {
+  vote(amount: "0.01" hash: "059f7f47936cbc080942035dded3f16d0e08b29347e08239dbba61c199de62f7"
+  idxQuestion: 0 voteContent: "000100")
+}'

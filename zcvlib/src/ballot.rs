@@ -33,7 +33,7 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     amount: u64,
     mut rng: R,
 ) -> ZCVResult<BallotData> {
-    let (fvk, _, _) = get_ivks(network, conn, 0).await?;
+    let (fvk, _, _) = get_ivks(network, conn, id_account).await?;
     let (_, recipient) = bech32::decode(address).anyhow()?;
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
     let mut a = amount;

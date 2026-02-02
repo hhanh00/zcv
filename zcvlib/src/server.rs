@@ -4,7 +4,7 @@ use crate::{
     db::{get_apphash, store_apphash, store_ballot, store_election},
     error::IntoAnyhow,
     pod::ElectionPropsPub,
-    vote_rpc::{Validator, VoteMessage, vote_message::TypeOneof},
+    vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -95,7 +95,7 @@ impl Application for Server {
                 }
                 TypeOneof::Ballot(ballot) => {
                     let mut state = self.state.lock();
-                    let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                    let ballot = from_protobuf(&ballot)?;
                     let hash = ballot.data.sighash()?;
                     state.check_ballot(ballot)?;
                     hash
@@ -203,7 +203,7 @@ impl Application for Server {
                             }
                             TypeOneof::Ballot(ballot) => {
                                 tracing::info!("Incoming ballot");
-                                let ballot = orchard::vote::Ballot::read(&*ballot.data).anyhow()?;
+                                let ballot = from_protobuf(&ballot).anyhow()?;
                                 let hash = ballot.data.sighash()?;
                                 let election =
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
@@ -318,6 +318,12 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     }
 
     Ok(json_rep)
+}
+
+pub fn from_protobuf(ballot: &Ballot) -> std::io::Result<orchard::vote::Ballot> {
+    let data = orchard::vote::BallotData::read(&*ballot.data)?;
+    let witnesses = orchard::vote::BallotWitnesses::read(&*ballot.witnesses)?;
+    Ok(orchard::vote::Ballot { data, witnesses })
 }
 
 pub async fn run_cometbft_app(

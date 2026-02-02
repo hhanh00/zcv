@@ -1,3 +1,4 @@
+use bigdecimal::{BigDecimal, ToPrimitive};
 use juniper::{FieldResult, graphql_object};
 use zcvlib::db::set_account_seed;
 
@@ -25,6 +26,12 @@ impl Mutation {
 
     async fn scan_notes(hash: String, ctx: &GQLContext) -> FieldResult<bool> {
         zcvlib::api::simple::scan_notes(hash, Self::ID_ACCOUNT, &ctx.0).await?;
+        Ok(true)
+    }
+
+    async fn vote(hash: String, idx_question: i32, vote_content: String, amount: BigDecimal, ctx: &GQLContext) -> FieldResult<bool> {
+        let amount = amount.with_scale(8).to_u64().ok_or(anyhow::anyhow!("Invalid amount"))?;
+        zcvlib::api::simple::vote(hash, Self::ID_ACCOUNT, idx_question as u32, vote_content, amount, &ctx.0).await?;
         Ok(true)
     }
 }

@@ -13,10 +13,11 @@ pub mod simple;
 pub struct Context {
     pub pool: SqlitePool,
     pub lwd_url: String,
+    pub election_url: String,
 }
 
 impl Context {
-    pub async fn new(db_path: &str, lwd_url: &str) -> Result<Context> {
+    pub async fn new(db_path: &str, lwd_url: &str, election_url: &str) -> Result<Context> {
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
             .busy_timeout(Duration::from_mins(1))
@@ -27,6 +28,7 @@ impl Context {
         Ok(Context {
             pool,
             lwd_url: lwd_url.to_string(),
+            election_url: election_url.to_string(),
         })
     }
 
