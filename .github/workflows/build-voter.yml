@@ -1,0 +1,28 @@
+name: Build Voter
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+    - main
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build-voter:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo npm -g install graphqurl
+          NPMBIN=$(npm prefix -g)/bin
+          echo "$NPMBIN" >> $GITHUB_PATH
+      - name: Build
+        run: |
+          cargo build -r
+          ./target/release/voter &
+          ./tests/voter.sh

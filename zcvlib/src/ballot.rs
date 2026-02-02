@@ -22,10 +22,12 @@ use crate::{
     tiu,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     network: &Network,
     conn: &mut SqliteConnection,
     domain: Fp,
+    id_account: u32,
     address: &str,
     memo: &[u8],
     amount: u64,
@@ -35,7 +37,7 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     let (_, recipient) = bech32::decode(address).anyhow()?;
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
     let mut a = amount;
-    let utxos = list_unspent_notes(conn, domain).await?;
+    let utxos = list_unspent_notes(conn, domain, id_account).await?;
     let mut spends = vec![];
     for utxo in utxos {
         let u = a.min(utxo.value);
@@ -77,6 +79,7 @@ pub async fn decrypt_ballot_data(
     conn: &mut SqliteConnection,
     fvk: FullViewingKey,
     domain: Fp,
+    id_account: u32,
     question: u32,
     height: u32,
     position: u32,
@@ -89,6 +92,7 @@ pub async fn decrypt_ballot_data(
             store_received_note(
                 conn,
                 domain,
+                id_account,
                 &fvk,
                 &note,
                 &memo,
@@ -244,6 +248,7 @@ mod tests {
             &Network::MainNetwork,
             &mut conn,
             domain,
+            0,
             &address,
             &[], /* answer */
             100000,
@@ -323,6 +328,7 @@ mod tests {
             &Network::MainNetwork,
             &mut conn,
             domain,
+            0,
             &address,
             &[1, 1, 1, 1],
             0,

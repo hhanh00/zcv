@@ -3,7 +3,7 @@ use flutter_rust_bridge::frb;
 use zcash_protocol::consensus::Network;
 
 use crate::api::Context;
-use crate::db::get_election;
+use crate::db::{get_domain, get_election};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::lwd::connect;
 
@@ -39,4 +39,12 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
     )
     .await?;
     Ok(())
+}
+
+pub async fn get_balance(hash: String, idx_question: u32, id_account: u32, context: &Context) -> Result<u64> {
+    let mut conn = context.connect().await?;
+    let hash = hex::decode(&hash)?;
+    let (domain, _) = get_domain(&mut conn, &hash, idx_question as usize).await?;
+    let balance = crate::balance::get_balance(&mut conn, domain, id_account).await?;
+    Ok(balance)
 }
