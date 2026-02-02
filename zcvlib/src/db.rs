@@ -84,6 +84,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notes(
         id_note INTEGER PRIMARY KEY,
+        account INTEGER NOT NULL,
         question INTEGER NOT NULL,
         height INTEGER NOT NULL,
         scope INTEGER NOT NULL,
@@ -297,6 +298,7 @@ pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVRes
 pub async fn store_received_note(
     conn: &mut SqliteConnection,
     election_domain: Fp,
+    id_account: u32,
     fvk: &FullViewingKey,
     note: &Note,
     memo: &[u8],
@@ -310,9 +312,10 @@ pub async fn store_received_note(
 
     query(
         "INSERT INTO notes
-    (question, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    (account, question, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
+    .bind(id_account)
     .bind(question)
     .bind(height)
     .bind(scope)

@@ -7,14 +7,17 @@ use crate::{ZCVResult, pod::UTXO};
 pub async fn list_unspent_notes(
     conn: &mut SqliteConnection,
     domain: Fp,
+    id_account: u32,
 ) -> ZCVResult<Vec<UTXO>> {
     let utxos = query(
         "SELECT n.height, scope, position, nf, dnf, rho, diversifier, rseed, n.value
         FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
         JOIN questions q ON q.id_question = n.question
-        WHERE s.id_note IS NULL AND q.domain = ?1",
+        WHERE s.id_note IS NULL AND q.domain = ?1
+        AND n.account = ?2",
     )
     .bind(domain.to_repr().as_slice())
+    .bind(id_account)
     .map(|r: SqliteRow| {
         let height: u32 = r.get(0);
         let scope: u32 = r.get(1);
@@ -42,8 +45,8 @@ pub async fn list_unspent_notes(
     Ok(utxos)
 }
 
-pub async fn get_balance(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<u64> {
-    let utxos = list_unspent_notes(conn, domain).await?;
+pub async fn get_balance(conn: &mut SqliteConnection, domain: Fp, id_account: u32) -> ZCVResult<u64> {
+    let utxos = list_unspent_notes(conn, domain, id_account).await?;
     let balance = utxos.iter().map(|utxo| utxo.value).sum::<u64>();
     Ok(balance)
 }
@@ -63,7 +66,7 @@ mod tests {
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
         let (domain, _) = get_domain(&mut conn, TEST_ELECTION_HASH, 2).await?;
-        let balance = get_balance(&mut conn, domain).await?;
+        let balance = get_balance(&mut conn, domain, 0).await?;
         assert_eq!(balance, 1169078);
         Ok(())
     }

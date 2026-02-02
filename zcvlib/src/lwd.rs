@@ -121,6 +121,7 @@ pub async fn scan_blocks(
                             store_received_note(
                                 &mut db_tx,
                                 *domain,
+                                id_account,
                                 &fvk,
                                 &note,
                                 &[], // memos are not used prior to voting

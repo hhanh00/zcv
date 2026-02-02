@@ -1,3 +1,4 @@
+use bigdecimal::{BigDecimal, num_bigint::BigInt};
 use juniper::{FieldError, FieldResult, Value, graphql_object};
 
 use crate::voter::GQLContext;
@@ -14,5 +15,12 @@ impl Query {
     fn compile_election_def(election_json: String, seed: String) -> FieldResult<String> {
         zcvlib::api::simple::compile_election_def(election_json, seed)
         .map_err(|e| FieldError::new(e.to_string(), Value::Null))
+    }
+
+    pub async fn get_balance(hash: String, idx_question: i32, id_account: i32, context: &GQLContext) -> FieldResult<BigDecimal> {
+        let b = zcvlib::api::simple::get_balance(hash, idx_question as u32, id_account as u32, &context.0).await?;
+        let digits = BigInt::from(b);
+        let zec = BigDecimal::from_bigint(digits, 8);
+        Ok(zec)
     }
 }

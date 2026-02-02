@@ -7,3 +7,13 @@ gq http://127.0.0.1:8000/graphql \
 
 gq http://127.0.0.1:8000/graphql \
 -q 'mutation {setSeed(seed: "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew")}' \
+
+gq http://127.0.0.1:8000/graphql \
+-q 'mutation {scanNotes(hash: "059f7f47936cbc080942035dded3f16d0e08b29347e08239dbba61c199de62f7")}'
+
+BALANCE=$(gq -l --format=json http://127.0.0.1:8000/graphql \
+-q 'query ($e: String!) {getBalance(hash: $e, idAccount: 1, idxQuestion: 1)}' \
+-v e="059f7f47936cbc080942035dded3f16d0e08b29347e08239dbba61c199de62f7" \
+| jq -r .data.getBalance)
+printf '<%s>\n' "$BALANCE"
+[[ $BALANCE == "0.01169078" ]]

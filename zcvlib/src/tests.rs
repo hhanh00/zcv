@@ -63,6 +63,7 @@ pub async fn test_ballot(
         &Network::MainNetwork,
         conn,
         domain,
+        0,
         address,
         memo,
         13_500_000_000_000,
