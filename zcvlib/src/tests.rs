@@ -102,7 +102,8 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         &Network::MainNetwork,
         conn,
         &mut client,
-        1,
+        TEST_ELECTION_HASH,
+        0,
         3_168_000,
         3_169_000,
     )

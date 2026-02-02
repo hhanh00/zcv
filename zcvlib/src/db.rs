@@ -209,9 +209,11 @@ pub async fn store_election(
 pub async fn get_ivks(
     network: &Network,
     conn: &mut SqliteConnection,
+    id_account: u32,
 ) -> ZCVResult<(FullViewingKey, IncomingViewingKey, IncomingViewingKey)> {
     let (seed, aindex): (String, u32) =
-        query_as("SELECT seed, aindex FROM account WHERE id_account = 0")
+        query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
+            .bind(id_account)
             .fetch_one(conn)
             .await?;
     let spk = derive_spending_key(network, &seed, aindex)?;
