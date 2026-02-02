@@ -1,11 +1,11 @@
 use juniper::{FieldError, FieldResult, Value, graphql_object};
 
-use crate::voter::Context;
+use crate::voter::GQLContext;
 
 pub struct Query {}
 
 #[graphql_object]
-#[graphql(context = Context)]
+#[graphql(context = GQLContext)]
 impl Query {
     fn api_version() -> &'static str {
         "1.0"
