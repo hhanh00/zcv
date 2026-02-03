@@ -1,4 +1,4 @@
-name: Run Cluster Tests
+name: Run Large Cluster Tests
 permissions:
   contents: read
 
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-cluster:
+  build-large-cluster:
     runs-on: ubuntu-24.04
 
     steps:
@@ -55,16 +55,16 @@ jobs:
           sleep 10
           ./tests/submit_election.sh
           sleep 5
-          HEIGHT1=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          HEIGHT1=$(curl -s localhost:26657/validators | jq -r .result.block_height)
           PK=$(cat node2/config/priv_validator_key.json | jq .pub_key.value)
           NODE2_ID=$(cometbft show-node-id --home node2)
           echo $PK
           grpcurl --plaintext --proto zcvlib/protos/vote.proto -d "{\"pub_key\": $PK, \"power\": \"10\"}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/AddValidator
           echo "Chain should hang now since we added a validator"
           sleep 10
-          HEIGHT2a=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          HEIGHT2a=$(curl -s localhost:26657/validators | jq -r .result.block_height)
           sleep 10
-          HEIGHT2b=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          HEIGHT2b=$(curl -s localhost:26657/validators | jq -r .result.block_height)
           echo "Starting 2nd validator"
           cometbft start --home node2 >/dev/null &
           (cd node2; vote-cometbft >/dev/null &)
@@ -76,7 +76,7 @@ jobs:
           curl -s "localhost:26657/validators"
           curl -s "localhost:26657/net_info"
           sleep 10
-          HEIGHT3=$(curl -s localhost:26657/validators | jq .result.block_height\|tonumber)
+          HEIGHT3=$(curl -s localhost:26657/validators | jq -r .result.block_height)
           echo
           echo $HEIGHT1
           echo $HEIGHT2a

@@ -1,0 +1,74 @@
+name: Run Cluster Tests
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+    - main
+  workflow_dispatch:
+
+jobs:
+  build-cluster:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install dependencies
+        run: |
+          curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz -o grpcurl.tar.gz
+          tar -xzf grpcurl.tar.gz
+          sudo mv grpcurl /usr/local/bin/
+          go install github.com/cometbft/cometbft/cmd/cometbft@v0.38
+          GOBIN=$(go env GOPATH)/bin
+          echo "$GOBIN" >> $GITHUB_PATH
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Setup cluster
+        run: |
+          for i in {1..7}; do
+            cometbft init --home node$i
+            P2P_PORT=$((26656+(i-1)*10))
+            RPC_PORT=$((26657+(i-1)*10))
+            BFT_PORT=$((26658+(i-1)*10))
+            sed -i -e "s#allow_duplicate_ip = false#allow_duplicate_ip = true#" -e "s#unsafe = false#unsafe = true#" -e "s#laddr = \"tcp://0.0.0.0:26656\"#laddr = \"tcp://0.0.0.0:${P2P_PORT}\"#" -e "s#laddr = \"tcp://127.0.0.1:26657\"#laddr = \"tcp://127.0.0.1:${RPC_PORT}\"#" -e "s#proxy_app = \"tcp://127.0.0.1:26658\"#proxy_app = \"tcp://127.0.0.1:${BFT_PORT}\"#" node$i/config/config.toml
+            if [[ $i -ne 1 ]]; then
+              cp node1/config/genesis.json node$i/config/genesis.json
+            fi
+          done
+          cargo b --release
+          for i in {1..7}; do
+            cp zcv.toml node$i
+            P2P_PORT=$((26656+(i-1)*10))
+            RPC_PORT=$((26657+(i-1)*10))
+            BFT_PORT=$((26658+(i-1)*10))
+            GRPC_PORT=$((9010+(i-1)*10))
+            sed -i -e "s#26657#${RPC_PORT}#" -e "s#26658#${BFT_PORT}#" -e "s#9010#${GRPC_PORT}#" node$i/zcv.toml
+            cometbft start --home node$i >/dev/null &
+            (cd node$i; ../target/release/vote-cometbft >/dev/null &)
+            sleep 3
+            PK=$(cometbft show-validator --home node$i | jq .value)
+            NODE_ID=$(cometbft show-node-id --home node$i)
+            if [[ $i -ne 1 ]]; then
+              grpcurl --plaintext --proto zcvlib/protos/vote.proto -d "{\"pub_key\": $PK, \"power\": \"10\"}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/AddValidator
+              curl -s "localhost:26657/dial_peers?peers=%5B%22${NODE_ID}%40127.0.0.1%3A${P2P_PORT}%22%5D&persistent=true"
+            fi
+          done
+          sleep 10
+          HEIGHT1=$(curl -s localhost:26657/validators | jq -r .result.block_height)
+          sleep 10
+          curl -s "localhost:26657/validators"
+          echo
+          curl -s "localhost:26657/net_info"
+          echo
+          sleep 10
+          HEIGHT2=$(curl -s localhost:26657/validators | jq -r .result.block_height)
+          echo $HEIGHT1
+          echo $HEIGHT2
+          COUNT=$(curl -s localhost:26657/validators | jq -r .result.count)
+          [[ $COUNT -eq 7 ]]
