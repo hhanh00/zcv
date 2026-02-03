@@ -1,3 +1,4 @@
+
 use sqlx::{Sqlite, pool::PoolConnection};
 
 use crate::{ZCVResult, api::Context};
@@ -20,7 +21,7 @@ impl BFTContext {
 
     pub async fn new(db_path: &str, lwd_url: &str, comet_rpcport: u16) -> ZCVResult<BFTContext> {
         Self::init_logger();
-        let context = Context::new(db_path, lwd_url).await?;
+        let context = Context::new(db_path, lwd_url, "").await?;
         Ok(BFTContext {
             context,
             cometrpc_port: comet_rpcport,

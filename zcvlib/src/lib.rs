@@ -8,6 +8,7 @@ pub mod election;
 pub mod lwd;
 pub mod balance;
 pub mod ballot;
+pub mod vote;
 pub mod server;
 pub mod api;
 pub mod frb_generated;
