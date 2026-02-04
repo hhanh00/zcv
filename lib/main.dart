@@ -139,7 +139,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final electionJSON = compileElectionDef(
-      electionYaml: """{
+      electionJson: """{
   "start": 2978050,
   "end": 3218812,
   "need_sig": true,

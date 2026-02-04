@@ -3,13 +3,66 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
+import '../api.dart';
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 String compileElectionDef({
-  required String electionYaml,
+  required String electionJson,
   required String seed,
 }) => RustLib.instance.api.crateApiSimpleCompileElectionDef(
-  electionYaml: electionYaml,
+  electionJson: electionJson,
   seed: seed,
+);
+
+Future<Uint8List> storeElection({
+  required String electionJson,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleStoreElection(
+  electionJson: electionJson,
+  context: context,
+);
+
+Future<void> scanNotes({
+  required String hash,
+  required int idAccount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleScanNotes(
+  hash: hash,
+  idAccount: idAccount,
+  context: context,
+);
+
+Future<void> scanBallots({required String hash, required Context context}) =>
+    RustLib.instance.api.crateApiSimpleScanBallots(
+      hash: hash,
+      context: context,
+    );
+
+Future<BigInt> getBalance({
+  required String hash,
+  required int idAccount,
+  required int idxQuestion,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleGetBalance(
+  hash: hash,
+  idAccount: idAccount,
+  idxQuestion: idxQuestion,
+  context: context,
+);
+
+Future<void> vote({
+  required String hash,
+  required int idAccount,
+  required int idxQuestion,
+  required String voteContent,
+  required BigInt amount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleVote(
+  hash: hash,
+  idAccount: idAccount,
+  idxQuestion: idxQuestion,
+  voteContent: voteContent,
+  amount: amount,
+  context: context,
 );
