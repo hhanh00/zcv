@@ -68,7 +68,9 @@ impl VoteStreamer for ZCVServer {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
             let (height, hash): (u32, Vec<u8>) =
-                query_as("SELECT height, hash FROM state WHERE id = 0")
+                query_as("SELECT e.height, e.hash FROM elections e JOIN
+                state s ON e.hash = s.hash
+                WHERE s.id = 0")
                     .fetch_one(&mut *conn)
                     .await?;
             Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash }))

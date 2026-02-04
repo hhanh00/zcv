@@ -286,7 +286,7 @@ mod tests {
         ballot.write(&mut ballot_bytes)?;
         for itx in 0..2 {
             query(
-                "INSERT INTO ballots(height, itx, question, data, witness)
+                "INSERT INTO ballots(height, itx, question, data, witnesses)
         VALUES (1, ?1, ?2, ?3, '')",
             )
             .bind(itx)

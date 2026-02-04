@@ -1,10 +1,5 @@
 use crate::{
-    ZCVError, ZCVResult,
-    context::BFTContext,
-    db::{get_apphash, store_apphash, store_ballot, store_election},
-    error::IntoAnyhow,
-    pod::ElectionPropsPub,
-    vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
+    ZCVError, ZCVResult, context::BFTContext, db::{get_apphash, set_election, store_apphash, store_ballot, store_election, store_election_height}, error::IntoAnyhow, pod::ElectionPropsPub, vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof}
 };
 use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -51,6 +46,7 @@ pub struct ServerState {
     pub hash: Vec<u8>,
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
+    pub election_hash: Option<[u8; 32]>
 }
 
 impl ServerState {
@@ -65,6 +61,7 @@ impl ServerState {
             hash: hash.to_vec(),
             started,
             election: None,
+            election_hash: None,
         })
     }
 
@@ -199,6 +196,8 @@ impl Application for Server {
                                 let election: ElectionPropsPub =
                                     serde_json::from_str(&election.election)?;
                                 store_election(&mut db_tx, &election).await?;
+                                set_election(&mut db_tx, &election.hash()?).await?;
+                                state.election_hash = Some(election.hash()?);
                                 state.election = Some(election);
                             }
                             TypeOneof::Ballot(ballot) => {
@@ -207,9 +206,11 @@ impl Application for Server {
                                 let hash = ballot.data.sighash()?;
                                 let election =
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
+                                let election_hash = state.election_hash.unwrap();
+                                let h = election.end + height as u32;
                                 let rows_added = store_ballot(
                                     &mut db_tx,
-                                    election.start + height as u32,
+                                    h,
                                     itx as u32,
                                     ballot,
                                 )
@@ -218,6 +219,7 @@ impl Application for Server {
                                 if rows_added != 1 {
                                     tracing::info!("Tx already inserted {}", hex::encode(&hash));
                                 }
+                                store_election_height(&mut db_tx, &election_hash, h).await?;
                             }
                             TypeOneof::Start(_) => {
                                 state.started = true;
