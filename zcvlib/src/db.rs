@@ -23,15 +23,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     query(
         "CREATE TABLE IF NOT EXISTS state(
         id INTEGER PRIMARY KEY,
-        height INTEGER NOT NULL,
         hash BLOB NOT NULL,
         started BOOL NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
     query(
-        "INSERT INTO state(id, height, hash, started)
-    VALUES (0, 0, '', FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO state(id, hash, started)
+    VALUES (0, '', FALSE) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
@@ -51,6 +50,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         name TEXT NOT NULL,
         start INTEGER NOT NULL,
         end INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        position INTEGER NOT NULL,
         need_sig BOOL NOT NULL,
         data TEXT NOT NULL,
         UNIQUE (hash))",
@@ -163,10 +164,11 @@ pub async fn store_election(
     let json = serde_json::to_string(election).anyhow()?;
     let (id_election,): (u32,) = query_as(
         "INSERT INTO elections
-            (hash, apphash, start, end, need_sig, name, data)
-            VALUES (?, '', ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            (hash, apphash, start, end, height, position, need_sig, name, data)
+            VALUES (?, '', ?, ?, ?, 0, ?, ?, ?) ON CONFLICT DO UPDATE SET
             start = excluded.start,
             end = excluded.end,
+            height = excluded.height,
             need_sig = excluded.need_sig,
             name = excluded.name,
             data = excluded.data
@@ -175,6 +177,7 @@ pub async fn store_election(
     .bind(hash.as_slice())
     .bind(election.start)
     .bind(election.end)
+    .bind(election.start - 1)
     .bind(election.need_sig)
     .bind(&election.name)
     .bind(&json)
