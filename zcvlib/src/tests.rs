@@ -13,7 +13,7 @@ use crate::{
     ZCVResult,
     ballot::encrypt_ballot_data,
     context::BFTContext,
-    db::{create_schema, set_account_seed, store_election},
+    db::{create_schema, set_account_seed, set_election, store_election},
     lwd::{connect, scan_blocks},
     pod::ElectionProps,
 };
@@ -87,6 +87,7 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
     let e = e.build(TEST_ELECTION_SEED)?;
     store_election(conn, &e).await?;
+    set_election(conn, &e.hash()?).await?;
     Ok(())
 }
 

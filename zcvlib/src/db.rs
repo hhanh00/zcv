@@ -118,7 +118,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         itx INTEGER NOT NULL,
         question INTEGER NOT NULL,
         data BLOB NOT NULL,
-        witness BLOB NOT NULL,
+        witnesses BLOB NOT NULL,
         UNIQUE (height, itx))",
     )
     .execute(&mut *conn)
@@ -226,6 +226,14 @@ pub async fn get_ivks(
     Ok((fvk, ivks.0, ivks.1))
 }
 
+pub async fn set_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<()> {
+    query("UPDATE state SET hash = ?1 WHERE id = 0")
+    .bind(hash)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<ElectionPropsPub> {
     let (election,): (String,) = query_as("SELECT data FROM elections WHERE hash = ?1")
         .bind(hash)
@@ -273,6 +281,16 @@ pub async fn store_apphash(
         .bind(apphash)
         .execute(conn)
         .await?;
+    Ok(())
+}
+
+pub async fn store_election_height(db_tx: &mut SqliteConnection, hash: &[u8], height: u32) -> ZCVResult<()> {
+    tracing::info!("store_election_height {} {height}", hex::encode(hash));
+    query("UPDATE elections SET height = ?1 WHERE hash = ?2")
+    .bind(height)
+    .bind(hash)
+    .execute(db_tx)
+    .await?;
     Ok(())
 }
 
@@ -369,7 +387,7 @@ pub async fn store_ballot(
     witnesses.write(&mut witnesses_bytes).anyhow()?;
 
     let r = query(
-        "INSERT INTO ballots(height, itx, question, data, witness)
+        "INSERT INTO ballots(height, itx, question, data, witnesses)
     SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
     WHERE domain = ?5 ON CONFLICT DO NOTHING",
     )
@@ -406,7 +424,7 @@ pub async fn get_ballot_range(
     handler: impl AsyncFn(crate::vote_rpc::Ballot) -> ZCVResult<()>,
 ) -> ZCVResult<()> {
     let mut s = query(
-        "SELECT height, itx, domain, data FROM ballots
+        "SELECT height, itx, data, witnesses FROM ballots
     WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx",
     )
     .bind(start)
@@ -416,12 +434,13 @@ pub async fn get_ballot_range(
         if let Ok(r) = r {
             let height: u32 = r.get(0);
             let itx: u32 = r.get(1);
-            let data: Vec<u8> = r.get(3);
+            let data: Vec<u8> = r.get(2);
+            let witnesses: Vec<u8> = r.get(3);
             let ballot = crate::vote_rpc::Ballot {
                 height,
                 itx,
                 data,
-                witnesses: vec![],
+                witnesses,
             };
             handler(ballot).await?;
         }
