@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use anyhow::Context;
 use bip39::Mnemonic;
 use ff::PrimeField;
@@ -228,9 +230,9 @@ pub async fn get_ivks(
 
 pub async fn set_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<()> {
     query("UPDATE state SET hash = ?1 WHERE id = 0")
-    .bind(hash)
-    .execute(conn)
-    .await?;
+        .bind(hash)
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -267,7 +269,8 @@ pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<
     let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_optional(conn)
-        .await?.map(|v| v.0);
+        .await?
+        .map(|v| v.0);
     Ok(apphash)
 }
 
@@ -284,14 +287,26 @@ pub async fn store_apphash(
     Ok(())
 }
 
-pub async fn store_election_height(db_tx: &mut SqliteConnection, hash: &[u8], height: u32) -> ZCVResult<()> {
+pub async fn store_election_height(
+    db_tx: &mut SqliteConnection,
+    hash: &[u8],
+    height: u32,
+) -> ZCVResult<()> {
     tracing::info!("store_election_height {} {height}", hex::encode(hash));
     query("UPDATE elections SET height = ?1 WHERE hash = ?2")
-    .bind(height)
-    .bind(hash)
-    .execute(db_tx)
-    .await?;
+        .bind(height)
+        .bind(hash)
+        .execute(db_tx)
+        .await?;
     Ok(())
+}
+
+pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
+    let (height,): (u32,) = query_as("SELECT height FROM elections WHERE hash = ?1")
+        .bind(hash)
+        .fetch_one(conn)
+        .await?;
+    Ok(height)
 }
 
 pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
@@ -421,30 +436,33 @@ pub async fn get_ballot_range(
     mut conn: SqliteConnection,
     start: u32,
     end: u32,
-    handler: impl AsyncFn(crate::vote_rpc::Ballot) -> ZCVResult<()>,
+    handler: impl Fn(crate::vote_rpc::Ballot) -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>> + 'static + Send + Sync
 ) -> ZCVResult<()> {
-    let mut s = query(
-        "SELECT height, itx, data, witnesses FROM ballots
+    tokio::spawn(async move {
+        let mut s = query(
+            "SELECT height, itx, data, witnesses FROM ballots
     WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx",
-    )
-    .bind(start)
-    .bind(end)
-    .fetch(&mut conn);
-    while let Some(r) = s.next().await {
-        if let Ok(r) = r {
-            let height: u32 = r.get(0);
-            let itx: u32 = r.get(1);
-            let data: Vec<u8> = r.get(2);
-            let witnesses: Vec<u8> = r.get(3);
-            let ballot = crate::vote_rpc::Ballot {
-                height,
-                itx,
-                data,
-                witnesses,
-            };
-            handler(ballot).await?;
+        )
+        .bind(start)
+        .bind(end)
+        .fetch(&mut conn);
+        while let Some(r) = s.next().await {
+            if let Ok(r) = r {
+                let height: u32 = r.get(0);
+                let itx: u32 = r.get(1);
+                let data: Vec<u8> = r.get(2);
+                let witnesses: Vec<u8> = r.get(3);
+                let ballot = crate::vote_rpc::Ballot {
+                    height,
+                    itx,
+                    data,
+                    witnesses,
+                };
+                handler(ballot).await?;
+            }
         }
-    }
+        Ok::<_, anyhow::Error>(())
+    });
     Ok(())
 }
 

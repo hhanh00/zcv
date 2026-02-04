@@ -6,9 +6,11 @@ use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
 
 use crate::api::Context;
-use crate::db::{get_domain, get_election};
+use crate::db::{get_domain, get_election, get_election_height};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::lwd::connect;
+use crate::server::from_protobuf;
+use crate::vote_rpc::{Empty, VoteRange};
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
 #[frb(sync)]
@@ -43,6 +45,27 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
         e.end,
     )
     .await?;
+    Ok(())
+}
+
+#[frb]
+pub async fn scan_ballots(hash: String, context: &Context) -> Result<()> {
+    let mut conn = context.connect().await?;
+    let hash = hex::decode(&hash)?;
+    let ep = Endpoint::from_shared(context.election_url.clone())?;
+    let mut client = VoteStreamerClient::connect(ep).await?;
+    let start = get_election_height(&mut conn, &hash).await? + 1;
+    let rep = client.get_latest_vote_height(Request::new(Empty {})).await?;
+    let end = rep.into_inner().height;
+    let mut ballots = client.get_vote_range(Request::new(VoteRange {
+        start,
+        end,
+    })).await?.into_inner();
+    while let Some(ballot) = ballots.message().await? {
+        let ballot = from_protobuf(&ballot)?;
+        let sighash = ballot.data.sighash()?;
+        tracing::info!("{}", hex::encode(&sighash));
+    }
     Ok(())
 }
 

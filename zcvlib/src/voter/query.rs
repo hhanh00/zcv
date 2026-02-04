@@ -23,4 +23,9 @@ impl Query {
         let zec = BigDecimal::from_bigint(digits, 8);
         Ok(zec)
     }
+
+    pub async fn scan_ballots(hash: String, context: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::scan_ballots(hash, &context.0).await?;
+        Ok(true)
+    }
 }
