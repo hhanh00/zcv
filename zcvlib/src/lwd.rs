@@ -1,22 +1,17 @@
 use std::collections::HashSet;
 
 use crate::{
-    ZCVResult,
-    db::{get_ivks, store_received_note, store_spend},
-    rpc::{
+    ZCVResult, db::{get_ivks, store_received_note, store_spend}, error::IntoAnyhow, rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
-    },
-    tiu,
+    }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
 };
 use ff::PrimeField;
 use orchard::{
-    keys::PreparedIncomingViewingKey,
-    note::{ExtractedNoteCommitment, Nullifier},
-    note_encryption::{CompactAction, OrchardDomain},
+    keys::PreparedIncomingViewingKey, note::{ExtractedNoteCommitment, Nullifier}, note_encryption::{CompactAction, OrchardDomain}, vote::{BallotData, try_decrypt_ballot}
 };
 use pasta_curves::Fp;
-use sqlx::{Acquire, Row, SqliteConnection, query, sqlite::SqliteRow};
+use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
@@ -26,6 +21,7 @@ use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
 use zcash_protocol::consensus::Network;
 
 pub type Client = CompactTxStreamerClient<Channel>;
+pub type VoteClient = VoteStreamerClient<Channel>;
 
 pub async fn connect(url: &str) -> ZCVResult<Client> {
     let ep = Endpoint::from_shared(url.to_string())?;
@@ -60,7 +56,6 @@ pub async fn scan_blocks(
     })
     .fetch_all(&mut *db_tx)
     .await?;
-    info!("{} questions", domains.len());
 
     let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
     let ivks = [
@@ -85,7 +80,10 @@ pub async fn scan_blocks(
         .await?
         .into_inner();
 
-    let mut position = 0u32;
+    let (mut position, ): (u32, ) = query_as("SELECT position FROM elections WHERE hash = ?1")
+    .bind(hash)
+    .fetch_one(&mut *db_tx)
+    .await?;
 
     while let Some(block) = blocks.message().await? {
         let height = block.height as u32;
@@ -113,8 +111,7 @@ pub async fn scan_blocks(
 
                 let domain = OrchardDomain::for_compact_action(&act);
                 for (scope, pivk) in ivks.iter() {
-                    if let Some((note, _)) = try_compact_note_decryption(&domain, pivk, &act)
-                    {
+                    if let Some((note, _)) = try_compact_note_decryption(&domain, pivk, &act) {
                         info!("Found note at {} for {} zats", height, note.value().inner());
 
                         for (id_question, domain) in domains.iter() {
@@ -141,6 +138,104 @@ pub async fn scan_blocks(
 
                 position += 1;
             }
+        }
+    }
+    query("UPDATE elections SET height = ?1, position = ?2
+    WHERE hash = ?3")
+    .bind(end)
+    .bind(position)
+    .bind(hash)
+    .execute(&mut *db_tx)
+    .await?;
+    db_tx.commit().await?;
+    Ok(())
+}
+
+pub async fn scan_ballots(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    client: &mut VoteClient,
+    hash: &[u8],
+    id_account: u32,
+    start: u32,
+    end: u32,
+) -> ZCVResult<()> {
+    let mut db_tx = conn.begin().await?;
+
+    let domains = query(
+        "SELECT q.id_question, q.domain FROM questions q
+        JOIN elections e ON e.id_election = q.election
+        WHERE e.hash = ?1 ORDER BY q.idx",
+    )
+    .bind(hash)
+    .map(|r: SqliteRow| {
+        let idx: u32 = r.get(0);
+        let d: Vec<u8> = r.get(1);
+        let domain = Fp::from_repr(tiu!(d)).unwrap();
+        (idx, domain)
+    })
+    .fetch_all(&mut *db_tx)
+    .await?;
+
+    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
+    let ivks = [
+        (0, PreparedIncomingViewingKey::new(&eivk)),
+        (1, PreparedIncomingViewingKey::new(&iivk)),
+    ];
+
+    let mut nfs: HashSet<[u8; 32]> = HashSet::new();
+    // TODO: Load nfs from unspend notes domain nullifiers
+
+    let mut ballots = client
+        .get_vote_range(Request::new(VoteRange {
+            start: (start + 1),
+            end,
+        }))
+        .await?
+        .into_inner();
+
+    let mut position = 0u32;
+    // TODO: Read current size of cmx tree
+
+    while let Some(ballot) = ballots.message().await? {
+        let height = ballot.height;
+        let data = ballot.data;
+        let data = BallotData::read(&*data).anyhow()?;
+        let domain = Fp::from_repr(data.domain).unwrap();
+        for a in data.actions {
+            if nfs.contains(&a.nf) {
+                for (id_question, _) in domains.iter() {
+                    store_spend(&mut db_tx, *id_question, &a.nf, height).await?;
+                }
+            }
+
+            for (scope, pivk) in ivks.iter() {
+                if let Some((note, memo)) = try_decrypt_ballot(pivk, a.clone())? {
+                    info!("Found note at {} for {} zats", height, note.value().inner());
+
+                    for (id_question, domain) in domains.iter() {
+                        store_received_note(
+                            &mut db_tx,
+                            *domain,
+                            id_account,
+                            &fvk,
+                            &note,
+                            &memo, // memos are not used prior to voting
+                            height,
+                            position,
+                            *id_question,
+                            *scope,
+                        )
+                        .await?;
+                    }
+
+                    // track new note nullifier
+                    let nf = note.nullifier_domain(&fvk, domain).to_bytes();
+                    nfs.insert(nf);
+                }
+            }
+
+            position += 1;
         }
     }
     db_tx.commit().await?;
