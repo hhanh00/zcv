@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use flutter_rust_bridge::frb;
 use sqlx::{Sqlite, SqlitePool, pool::PoolConnection, sqlite::SqliteConnectOptions};
 
 use crate::db::create_schema;
@@ -8,15 +9,18 @@ use crate::db::create_schema;
 pub mod init;
 pub mod simple;
 
-#[derive(Clone)]
 
+#[frb(opaque)]
+#[derive(Clone)]
 pub struct Context {
+    #[frb(ignore)]
     pub pool: SqlitePool,
     pub lwd_url: String,
     pub election_url: String,
 }
 
 impl Context {
+    #[frb(ignore)]
     pub async fn new(db_path: &str, lwd_url: &str, election_url: &str) -> Result<Context> {
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
@@ -32,6 +36,7 @@ impl Context {
         })
     }
 
+    #[frb(ignore)]
     pub async fn connect(&self) -> Result<PoolConnection<Sqlite>> {
         Ok(self.pool.acquire().await?)
     }

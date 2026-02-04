@@ -228,9 +228,9 @@ pub async fn get_ivks(
 
 pub async fn set_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<()> {
     query("UPDATE state SET hash = ?1 WHERE id = 0")
-    .bind(hash)
-    .execute(conn)
-    .await?;
+        .bind(hash)
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -267,7 +267,8 @@ pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<
     let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_optional(conn)
-        .await?.map(|v| v.0);
+        .await?
+        .map(|v| v.0);
     Ok(apphash)
 }
 
@@ -284,14 +285,26 @@ pub async fn store_apphash(
     Ok(())
 }
 
-pub async fn store_election_height(db_tx: &mut SqliteConnection, hash: &[u8], height: u32) -> ZCVResult<()> {
+pub async fn store_election_height(
+    db_tx: &mut SqliteConnection,
+    hash: &[u8],
+    height: u32,
+) -> ZCVResult<()> {
     tracing::info!("store_election_height {} {height}", hex::encode(hash));
     query("UPDATE elections SET height = ?1 WHERE hash = ?2")
-    .bind(height)
-    .bind(hash)
-    .execute(db_tx)
-    .await?;
+        .bind(height)
+        .bind(hash)
+        .execute(db_tx)
+        .await?;
     Ok(())
+}
+
+pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
+    let (height,): (u32,) = query_as("SELECT height FROM elections WHERE hash = ?1")
+        .bind(hash)
+        .fetch_one(conn)
+        .await?;
+    Ok(height)
 }
 
 pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
