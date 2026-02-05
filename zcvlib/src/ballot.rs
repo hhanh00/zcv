@@ -290,7 +290,7 @@ mod tests {
 
     use crate::{
         ZCVResult,
-        ballot::{encrypt_ballot_data, tally_plurality_election},
+        ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends, tally_plurality_election},
         db::{derive_spending_key, get_domain, get_question},
         error::IntoAnyhow,
         tests::{
@@ -387,14 +387,16 @@ mod tests {
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
         let (domain, address) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
-        let ballot_data = encrypt_ballot_data(
+        let ballot_data = encrypt_ballot_data_with_spends(
             &Network::MainNetwork,
             &mut conn,
             domain,
             0,
             &address,
             &[1, 1, 1, 1],
-            0,
+            2_400_000_000_000u64,
+            vec![],
+            8_000_000_000_000u64,
             OsRng,
         )
         .await?;
