@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use bech32::{Bech32m, Hrp};
 use ff::PrimeField;
 use orchard::{
-    Address,
-    keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    vote::{BallotAnchors, BallotData, encrypt_ballot_action, try_decrypt_ballot},
+    Address, keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
+    vote::{BallotAnchors, BallotData, dummy_vote, encrypt_ballot_action, try_decrypt_ballot},
 };
 use pasta_curves::Fp;
+use rand::seq::SliceRandom;
 use rand_core::{CryptoRng, RngCore};
 use sqlx::{SqliteConnection, query, query_as};
 use zcash_protocol::consensus::Network;
@@ -17,7 +17,7 @@ use crate::{
     balance::list_unspent_notes,
     db::{derive_spending_key, fetch_ballots, get_ivks, store_received_note},
     error::IntoAnyhow,
-    pod::ZCV_HRP,
+    pod::{UTXO, ZCV_HRP},
     tiu,
 };
 
@@ -32,35 +32,100 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     amount: u64,
     mut rng: R,
 ) -> ZCVResult<BallotData> {
-    let (fvk, _, _) = get_ivks(network, conn, id_account).await?;
+    let mut utxos = list_unspent_notes(conn, domain, id_account).await?;
+    utxos.shuffle(&mut rng);
+    let mut sum = 0;
+    let utxos: Vec<_> = utxos
+        .into_iter()
+        .take_while(|u| {
+            let r = sum < amount;
+            sum += u.value;
+            r
+        })
+        .collect();
+    let amount_utxo = utxos.iter().map(|u| u.value).sum::<u64>();
+    if amount_utxo < amount {
+        return Err(ZCVError::NotEnoughVotes);
+    }
+    encrypt_ballot_data_with_spends(
+        network,
+        conn,
+        domain,
+        id_account,
+        address,
+        memo,
+        amount,
+        utxos,
+        amount_utxo,
+        rng,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn encrypt_ballot_data_with_spends<R: CryptoRng + RngCore>(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    domain: Fp,
+    id_account: u32,
+    address: &str,
+    memo: &[u8],
+    amount: u64,
+    mut spends: Vec<UTXO>,
+    amount_spent: u64,
+    mut rng: R,
+) -> ZCVResult<BallotData> {
+    let (fvk, _, ivk) = get_ivks(network, conn, id_account).await?;
+    let change_address = ivk.address_at(0u64);
     let (_, recipient) = bech32::decode(address).anyhow()?;
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
-    let mut a = amount;
-    let utxos = list_unspent_notes(conn, domain, id_account).await?;
-    let mut spends = vec![];
-    for utxo in utxos {
-        let u = a.min(utxo.value);
-        a -= u;
-        spends.push(utxo);
-        if a == 0 {
-            break;
+    if spends.len() < 2 {
+        // pad
+        let len = spends.len();
+        for _ in 0..(2 - len) {
+            let (_, fvk, note) = dummy_vote(&mut rng);
+            let nf = note.nullifier(&fvk);
+            let dnf = note.nullifier_domain(&fvk, domain);
+            let recipient = note.recipient();
+            spends.push(UTXO {
+                height: 0,
+                scope: 0,
+                position: 0,
+                nf: nf.to_bytes().to_vec(),
+                dnf: dnf.to_bytes().to_vec(),
+                rho: note.rho().to_bytes().to_vec(),
+                diversifier: recipient.diversifier().as_array().to_vec(),
+                rseed: note.rseed().as_bytes().to_vec(),
+                value: 0,
+            });
         }
     }
-    if a > 0 {
+    assert!(spends.len() >= 2);
+    // We do not check that amount_spent == sum(spends.amount)
+    // because this is an internal function and the caller
+    // should have calculated the amount_spent
+    // This function is used when testing ballot outputs
+    if amount_spent < amount {
         return Err(ZCVError::NotEnoughVotes);
     }
 
     let mut actions = vec![];
-    let mut a = amount;
-    for spend in spends {
+    for (i, spend) in spends.into_iter().enumerate() {
         let spend = spend.to_note(&fvk);
-        let spend_amount = a.min(spend.value().inner());
+        let (output_amount, destination) = if i == 0 {
+            (amount, recipient)
+        }
+        else if i == 1 {
+            let change = amount_spent - amount;
+            (change, change_address)
+        }
+        else {
+            (0, recipient)
+        };
         let (action, _, _) =
-            encrypt_ballot_action(domain, fvk.clone(), &spend, recipient, a, memo, &mut rng)?;
-        a -= spend_amount;
+            encrypt_ballot_action(domain, fvk.clone(), &spend, destination, output_amount, memo, &mut rng)?;
         actions.push(action);
     }
-    assert_eq!(a, 0);
     let ballot = BallotData {
         version: 1,
         domain: domain.to_repr(),
@@ -254,8 +319,7 @@ mod tests {
             OsRng,
         )
         .await?;
-        let spk =
-            derive_spending_key(&Network::MainNetwork, TEST_ELECTION_SEED, 2).anyhow()?;
+        let spk = derive_spending_key(&Network::MainNetwork, TEST_ELECTION_SEED, 2).anyhow()?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
         let n = try_decrypt_ballot(&ivk, ballot.actions[0].clone())?;
@@ -344,9 +408,11 @@ mod tests {
         };
         let mut ballot_bytes = vec![];
         ballot.write(&mut ballot_bytes).anyhow()?;
-        assert_eq!(ballot_bytes.len(), 907);
-        tracing::info!("{}",
-            base64::engine::general_purpose::STANDARD.encode(&ballot_bytes));
+        assert_eq!(ballot_bytes.len(), 1647);
+        tracing::info!(
+            "{}",
+            base64::engine::general_purpose::STANDARD.encode(&ballot_bytes)
+        );
         Ok(())
     }
 }

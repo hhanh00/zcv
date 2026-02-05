@@ -1,7 +1,7 @@
 [patch.crates-io.orchard]
 # path = "./orchard"
 git = "https://github.com/hhanh00/orchard.git"
-rev = "e9f61a6aaef06b32575a73f3c948b16a8894806f"
+rev = "7a21ed7a14ed85b011bdc4e177fd6b0a699ed917"
 
 [workspace]
 exclude = ["orchard"]
@@ -27,6 +27,7 @@ parking_lot = "0.12"
 pasta_curves = "0.5"
 prost = "0.14"
 rand_core = "0.6"
+rand = "0.8"
 reqwest = {version = "0.12", features = ["json"]}
 serde_json = "1.0"
 serial_test = "3.2.0"
