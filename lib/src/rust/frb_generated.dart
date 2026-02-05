@@ -108,6 +108,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSimpleScanBallots({
     required String hash,
+    required int idAccount,
     required Context context,
   });
 
@@ -371,6 +372,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<void> crateApiSimpleScanBallots({
     required String hash,
+    required int idAccount,
     required Context context,
   }) {
     return handler.executeNormal(
@@ -378,6 +380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(hash, serializer);
+          sse_encode_u_32(idAccount, serializer);
           sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
             context,
             serializer,
@@ -394,7 +397,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSimpleScanBallotsConstMeta,
-        argValues: [hash, context],
+        argValues: [hash, idAccount, context],
         apiImpl: this,
       ),
     );
@@ -402,7 +405,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSimpleScanBallotsConstMeta => const TaskConstMeta(
     debugName: "scan_ballots",
-    argNames: ["hash", "context"],
+    argNames: ["hash", "idAccount", "context"],
   );
 
   @override

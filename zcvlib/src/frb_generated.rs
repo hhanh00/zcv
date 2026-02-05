@@ -397,6 +397,7 @@ fn wire__crate__api__simple__scan_ballots_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_hash = <String>::sse_decode(&mut deserializer);
+            let api_id_account = <u32>::sse_decode(&mut deserializer);
             let api_context = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Context>,
             >>::sse_decode(&mut deserializer);
@@ -423,8 +424,12 @@ fn wire__crate__api__simple__scan_ballots_impl(
                             }
                         }
                         let api_context_guard = api_context_guard.unwrap();
-                        let output_ok =
-                            crate::api::simple::scan_ballots(api_hash, &*api_context_guard).await?;
+                        let output_ok = crate::api::simple::scan_ballots(
+                            api_hash,
+                            api_id_account,
+                            &*api_context_guard,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,

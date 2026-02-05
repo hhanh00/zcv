@@ -323,9 +323,8 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
 }
 
 pub fn from_protobuf(ballot: &Ballot) -> std::io::Result<orchard::vote::Ballot> {
-    let data = orchard::vote::BallotData::read(&*ballot.data)?;
-    let witnesses = orchard::vote::BallotWitnesses::read(&*ballot.witnesses)?;
-    Ok(orchard::vote::Ballot { data, witnesses })
+    let ballot = orchard::vote::Ballot::read(&*ballot.ballot)?;
+    Ok(ballot)
 }
 
 pub async fn run_cometbft_app(

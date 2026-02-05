@@ -1,6 +1,5 @@
 use anyhow::Result;
 use flutter_rust_bridge::frb;
-use orchard::vote::Ballot;
 use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
@@ -9,8 +8,7 @@ use crate::api::Context;
 use crate::db::{get_domain, get_election, get_election_height};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::lwd::connect;
-use crate::server::from_protobuf;
-use crate::vote_rpc::{Empty, VoteRange};
+use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
 #[frb(sync)]
@@ -49,7 +47,7 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
 }
 
 #[frb]
-pub async fn scan_ballots(hash: String, context: &Context) -> Result<()> {
+pub async fn scan_ballots(hash: String, id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let hash = hex::decode(&hash)?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
@@ -57,15 +55,15 @@ pub async fn scan_ballots(hash: String, context: &Context) -> Result<()> {
     let start = get_election_height(&mut conn, &hash).await? + 1;
     let rep = client.get_latest_vote_height(Request::new(Empty {})).await?;
     let end = rep.into_inner().height;
-    let mut ballots = client.get_vote_range(Request::new(VoteRange {
+    crate::lwd::scan_ballots(
+        &Network::MainNetwork,
+        &mut conn,
+        &mut client,
+        &hash,
+        id_account,
         start,
         end,
-    })).await?.into_inner();
-    while let Some(ballot) = ballots.message().await? {
-        let ballot = from_protobuf(&ballot)?;
-        let sighash = ballot.data.sighash()?;
-        tracing::info!("{}", hex::encode(&sighash));
-    }
+    ).await?;
     Ok(())
 }
 
@@ -82,17 +80,14 @@ pub async fn vote(hash: String, id_account: u32, idx_question: u32, vote_content
     let hash = hex::decode(&hash)?;
     let memo = hex::decode(&vote_content)?;
     let mut conn = context.connect().await?;
-    let Ballot { data, witnesses } = crate::vote::vote(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, &memo, amount).await?;
-    let mut data_bytes = vec![];
-    data.write(&mut data_bytes)?;
-    let mut witnesses_bytes = vec![];
-    witnesses.write(&mut witnesses_bytes)?;
+    let ballot = crate::vote::vote(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, &memo, amount).await?;
+    let mut ballot_bytes = vec![];
+    ballot.write(&mut ballot_bytes)?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
 
     client.submit_vote(Request::new(crate::vote_rpc::Ballot {
-        data: data_bytes,
-        witnesses: witnesses_bytes,
+        ballot: ballot_bytes,
         ..Default::default()
     })).await?;
     Ok(())

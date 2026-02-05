@@ -10,13 +10,12 @@ use orchard::{
 use pasta_curves::Fp;
 use rand_core::{CryptoRng, RngCore};
 use sqlx::{SqliteConnection, query, query_as};
-use zcash_protocol::consensus::{Network, NetworkConstants};
+use zcash_protocol::consensus::Network;
 
 use crate::{
     ZCVError, ZCVResult,
     balance::list_unspent_notes,
-    db::{fetch_ballots, get_ivks, store_received_note},
-    election::derive_question_sk,
+    db::{derive_spending_key, fetch_ballots, get_ivks, store_received_note},
     error::IntoAnyhow,
     pod::ZCV_HRP,
     tiu,
@@ -173,8 +172,8 @@ pub async fn tally_ballots<R>(
     mut result: R,
     memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>,
 ) -> ZCVResult<R> {
-    let domains: Vec<(u32, Vec<u8>, String)> = query_as(
-        "SELECT idx, domain, address FROM questions q
+    let domains: Vec<(u32, String)> = query_as(
+        "SELECT idx, address FROM questions q
     JOIN elections e ON q.election = e.id_election
     WHERE e.hash = ?1 ORDER BY idx",
     )
@@ -182,9 +181,8 @@ pub async fn tally_ballots<R>(
     .fetch_all(&mut *conn)
     .await?;
     let mut ivks: HashMap<u32, PreparedIncomingViewingKey> = HashMap::new();
-    for (idx, domain, address) in domains {
-        let domain = Fp::from_repr(tiu!(domain)).unwrap();
-        let spk = derive_question_sk(election_seed, network.coin_type(), domain)?;
+    for (idx, address) in domains {
+        let spk = derive_spending_key(network, election_seed, idx)?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = fvk.to_ivk(Scope::External);
         let pivk = PreparedIncomingViewingKey::new(&ivk);
@@ -216,19 +214,19 @@ pub async fn tally_ballots<R>(
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use base64::Engine;
     use orchard::{
         keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
         vote::{Ballot, BallotWitnesses, try_decrypt_ballot},
     };
     use rand_core::OsRng;
     use sqlx::{Connection, query, query_as};
-    use zcash_protocol::consensus::{MainNetwork, Network, NetworkConstants};
+    use zcash_protocol::consensus::Network;
 
     use crate::{
         ZCVResult,
         ballot::{encrypt_ballot_data, tally_plurality_election},
-        db::{get_domain, get_question},
-        election::derive_question_sk,
+        db::{derive_spending_key, get_domain, get_question},
         error::IntoAnyhow,
         tests::{
             TEST_ELECTION_HASH, TEST_ELECTION_SEED, get_connection, run_scan, test_ballot,
@@ -244,6 +242,7 @@ mod tests {
         run_scan(&mut conn).await?;
         let (domain, address) =
             get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
+        tracing::info!("Sending ballot to {}", address);
         let ballot = encrypt_ballot_data(
             &Network::MainNetwork,
             &mut conn,
@@ -256,7 +255,7 @@ mod tests {
         )
         .await?;
         let spk =
-            derive_question_sk(TEST_ELECTION_SEED, MainNetwork.coin_type(), domain).anyhow()?;
+            derive_spending_key(&Network::MainNetwork, TEST_ELECTION_SEED, 2).anyhow()?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
         let n = try_decrypt_ballot(&ivk, ballot.actions[0].clone())?;
@@ -346,6 +345,8 @@ mod tests {
         let mut ballot_bytes = vec![];
         ballot.write(&mut ballot_bytes).anyhow()?;
         assert_eq!(ballot_bytes.len(), 907);
+        tracing::info!("{}",
+            base64::engine::general_purpose::STANDARD.encode(&ballot_bytes));
         Ok(())
     }
 }

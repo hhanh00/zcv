@@ -7,7 +7,7 @@ use futures::StreamExt;
 use orchard::{
     Note,
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
-    vote::{Ballot, BallotData},
+    vote::{Ballot, BallotData, BallotWitnesses},
 };
 use pasta_curves::Fp;
 use sqlx::{Row, SqliteConnection, query, query_as};
@@ -309,6 +309,14 @@ pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZC
     Ok(height)
 }
 
+pub async fn get_election_position(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
+    let (position, ): (u32, ) = query_as("SELECT position FROM elections WHERE hash = ?1")
+    .bind(hash)
+    .fetch_one(conn)
+    .await?;
+    Ok(position)
+}
+
 pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
     let (data,): (String,) = query_as("SELECT data FROM questions WHERE domain = ?1")
         .bind(domain.to_repr().as_slice())
@@ -452,11 +460,18 @@ pub async fn get_ballot_range(
                 let itx: u32 = r.get(1);
                 let data: Vec<u8> = r.get(2);
                 let witnesses: Vec<u8> = r.get(3);
+                let data = BallotData::read(&*data)?;
+                let witnesses = BallotWitnesses::read(&*witnesses)?;
+                let b = Ballot {
+                    data,
+                    witnesses,
+                };
+                let mut ballot = vec![];
+                b.write(&mut ballot)?;
                 let ballot = crate::vote_rpc::Ballot {
                     height,
                     itx,
-                    data,
-                    witnesses,
+                    ballot,
                 };
                 handler(ballot).await?;
             }

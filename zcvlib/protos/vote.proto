@@ -34,8 +34,7 @@ message VoteRange {
 message Ballot {
     uint32 height = 1;
     uint32 itx = 2;
-    bytes data = 3;
-    bytes witnesses = 4;
+    bytes ballot = 3;
 }
 
 message Hash {

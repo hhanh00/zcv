@@ -33,11 +33,15 @@ Future<void> scanNotes({
   context: context,
 );
 
-Future<void> scanBallots({required String hash, required Context context}) =>
-    RustLib.instance.api.crateApiSimpleScanBallots(
-      hash: hash,
-      context: context,
-    );
+Future<void> scanBallots({
+  required String hash,
+  required int idAccount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleScanBallots(
+  hash: hash,
+  idAccount: idAccount,
+  context: context,
+);
 
 Future<BigInt> getBalance({
   required String hash,
