@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
 use prost::Message;
 use sqlx::query_as;
@@ -7,13 +7,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    context::BFTContext,
-    error::IntoAnyhow,
-    server::submit_tx,
-    vote_rpc::{
+    ZCVError, ZCVResult, context::BFTContext, error::IntoAnyhow, server::submit_tx, vote_rpc::{
         Ballot, Election, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
         vote_message::TypeOneof, vote_streamer_server::VoteStreamer,
-    },
+    }
 };
 
 pub struct ZCVServer {
@@ -67,12 +64,13 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
-            let (height, hash): (u32, Vec<u8>) =
-                query_as("SELECT e.height, e.hash FROM elections e JOIN
+            let (height, hash): (u32, Vec<u8>) = query_as(
+                "SELECT e.height, e.hash FROM elections e JOIN
                 state s ON e.hash = s.hash
-                WHERE s.id = 0")
-                    .fetch_one(&mut *conn)
-                    .await?;
+                WHERE s.id = 0",
+            )
+            .fetch_one(&mut *conn)
+            .await?;
             Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash }))
         };
         res.await.map_err(to_tonic)
@@ -92,11 +90,14 @@ impl VoteStreamer for ZCVServer {
                 c.context.pool.acquire().await?.detach()
             };
             let (tx, rx) = mpsc::channel::<Result<Ballot, Status>>(1);
-            crate::db::get_ballot_range(conn, start, end, async move |b| {
-                let _ = tx.send(Ok(b)).await;
-                Ok(())
-            })
-            .await?;
+            let handler = move |b| -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>>{
+                let tx2 = tx.clone();
+                Box::pin(async move {
+                    let _ = tx2.send(Ok(b)).await;
+                    Ok::<_, ZCVError>(())
+                })
+            };
+            crate::db::get_ballot_range(conn, start, end, handler).await?;
             let rx = ReceiverStream::new(rx);
             let res = Response::new(rx);
 
@@ -112,8 +113,13 @@ impl VoteStreamer for ZCVServer {
                 type_oneof: Some(TypeOneof::Ballot(ballot)),
             };
             let json = self.submit(m).await?;
-            let hash = json.pointer("/result/data").and_then(|v| v.as_str()).unwrap_or_default();
-            let hash = Hash { hash: hex::decode(hash)? };
+            let hash = json
+                .pointer("/result/data")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let hash = Hash {
+                hash: hex::decode(hash)?,
+            };
             Ok(Response::new(hash))
         };
         res.await.map_err(to_tonic)

@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use anyhow::Context;
 use bip39::Mnemonic;
 use ff::PrimeField;
@@ -434,30 +436,33 @@ pub async fn get_ballot_range(
     mut conn: SqliteConnection,
     start: u32,
     end: u32,
-    handler: impl AsyncFn(crate::vote_rpc::Ballot) -> ZCVResult<()>,
+    handler: impl Fn(crate::vote_rpc::Ballot) -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>> + 'static + Send + Sync
 ) -> ZCVResult<()> {
-    let mut s = query(
-        "SELECT height, itx, data, witnesses FROM ballots
+    tokio::spawn(async move {
+        let mut s = query(
+            "SELECT height, itx, data, witnesses FROM ballots
     WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx",
-    )
-    .bind(start)
-    .bind(end)
-    .fetch(&mut conn);
-    while let Some(r) = s.next().await {
-        if let Ok(r) = r {
-            let height: u32 = r.get(0);
-            let itx: u32 = r.get(1);
-            let data: Vec<u8> = r.get(2);
-            let witnesses: Vec<u8> = r.get(3);
-            let ballot = crate::vote_rpc::Ballot {
-                height,
-                itx,
-                data,
-                witnesses,
-            };
-            handler(ballot).await?;
+        )
+        .bind(start)
+        .bind(end)
+        .fetch(&mut conn);
+        while let Some(r) = s.next().await {
+            if let Ok(r) = r {
+                let height: u32 = r.get(0);
+                let itx: u32 = r.get(1);
+                let data: Vec<u8> = r.get(2);
+                let witnesses: Vec<u8> = r.get(3);
+                let ballot = crate::vote_rpc::Ballot {
+                    height,
+                    itx,
+                    data,
+                    witnesses,
+                };
+                handler(ballot).await?;
+            }
         }
-    }
+        Ok::<_, anyhow::Error>(())
+    });
     Ok(())
 }
 
