@@ -4,7 +4,6 @@ pub mod error;
 pub mod pod;
 pub mod context;
 pub mod db;
-pub mod election;
 pub mod lwd;
 pub mod balance;
 pub mod ballot;

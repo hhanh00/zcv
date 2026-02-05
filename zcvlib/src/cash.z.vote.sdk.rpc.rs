@@ -53,9 +53,7 @@ pub struct Ballot {
     #[prost(uint32, tag = "2")]
     pub itx: u32,
     #[prost(bytes = "vec", tag = "3")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "4")]
-    pub witnesses: ::prost::alloc::vec::Vec<u8>,
+    pub ballot: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Hash {

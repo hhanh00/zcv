@@ -12,7 +12,7 @@ use orchard::{
 use pasta_curves::Fp;
 use serde::{Deserialize, Serialize};
 
-use crate::{ZCVResult, election::derive_question_sk, error::IntoAnyhow, tiu};
+use crate::{ZCVResult, db::derive_spending_key, error::IntoAnyhow, tiu};
 
 pub const ZCV_MNEMONIC_DOMAIN: &[u8] = b"ZCVote__Personal";
 
@@ -102,12 +102,10 @@ impl ElectionProps {
                 index: iq,
                 choices: choices.clone(),
             };
-            let domain = q.calculate_domain()?;
-
-            let sk = derive_question_sk(
+            let sk = derive_spending_key(
+                &zcash_protocol::consensus::Network::MainNetwork,
                 secret_seed,
-                zcash_protocol::constants::mainnet::COIN_TYPE,
-                domain,
+                iq as u32,
             )
             .anyhow()?;
 

@@ -8,10 +8,10 @@ use crate::{
 };
 use ff::PrimeField;
 use orchard::{
-    keys::PreparedIncomingViewingKey, note::{ExtractedNoteCommitment, Nullifier}, note_encryption::{CompactAction, OrchardDomain}, vote::{BallotData, try_decrypt_ballot}
+    keys::PreparedIncomingViewingKey, note::{ExtractedNoteCommitment, Nullifier}, note_encryption::{CompactAction, OrchardDomain}, vote::try_decrypt_ballot
 };
 use pasta_curves::Fp;
-use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
+use sqlx::{Acquire, Row, SqliteConnection, query, sqlite::SqliteRow};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
@@ -80,10 +80,7 @@ pub async fn scan_blocks(
         .await?
         .into_inner();
 
-    let (mut position, ): (u32, ) = query_as("SELECT position FROM elections WHERE hash = ?1")
-    .bind(hash)
-    .fetch_one(&mut *db_tx)
-    .await?;
+    let mut position = crate::db::get_election_position(&mut db_tx, hash).await?;
 
     while let Some(block) = blocks.message().await? {
         let height = block.height as u32;
@@ -194,15 +191,15 @@ pub async fn scan_ballots(
         .await?
         .into_inner();
 
-    let mut position = 0u32;
-    // TODO: Read current size of cmx tree
+    let mut position = crate::db::get_election_position(&mut db_tx, hash).await?;
 
     while let Some(ballot) = ballots.message().await? {
+        tracing::info!("Ballot @{}", ballot.height);
         let height = ballot.height;
-        let data = ballot.data;
-        let data = BallotData::read(&*data).anyhow()?;
+        let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
+        let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
-        for a in data.actions {
+        for a in data.actions.iter() {
             if nfs.contains(&a.nf) {
                 for (id_question, _) in domains.iter() {
                     store_spend(&mut db_tx, *id_question, &a.nf, height).await?;

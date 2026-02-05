@@ -24,8 +24,8 @@ impl Query {
         Ok(zec)
     }
 
-    pub async fn scan_ballots(hash: String, context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(hash, &context.0).await?;
+    pub async fn scan_ballots(hash: String, id_account: i32, context: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::scan_ballots(hash, id_account as u32, &context.0).await?;
         Ok(true)
     }
 }
