@@ -2279,7 +2279,7 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=e9f61a6aaef06b32575a73f3c948b16a8894806f#e9f61a6aaef06b32575a73f3c948b16a8894806f"
+source = "git+https://github.com/hhanh00/orchard.git?rev=7a21ed7a14ed85b011bdc4e177fd6b0a699ed917#7a21ed7a14ed85b011bdc4e177fd6b0a699ed917"
 dependencies = [
  "aes",
  "bitvec",
@@ -4826,6 +4826,7 @@ dependencies = [
  "parking_lot",
  "pasta_curves",
  "prost 0.14.1",
+ "rand 0.8.5",
  "rand_core 0.6.4",
  "reqwest",
  "serde",

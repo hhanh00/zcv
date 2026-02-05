@@ -46,6 +46,7 @@ tonic-prost = { workspace = true }
 prost = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_core = { workspace = true }
+rand = { workspace = true }
 hex-literal = { workspace = true }
 
 tendermint-abci = { workspace = true }
