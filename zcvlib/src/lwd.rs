@@ -199,32 +199,30 @@ pub async fn scan_ballots(
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
+        let id_question = domains.iter().find(|&d| d.1 == domain)
+            .unwrap().0;
         for a in data.actions.iter() {
             if nfs.contains(&a.nf) {
-                for (id_question, _) in domains.iter() {
-                    store_spend(&mut db_tx, *id_question, &a.nf, height).await?;
-                }
+                store_spend(&mut db_tx, id_question, &a.nf, height).await?;
             }
 
             for (scope, pivk) in ivks.iter() {
                 if let Some((note, memo)) = try_decrypt_ballot(pivk, a.clone())? {
                     info!("Found note at {} for {} zats", height, note.value().inner());
 
-                    for (id_question, domain) in domains.iter() {
-                        store_received_note(
-                            &mut db_tx,
-                            *domain,
-                            id_account,
-                            &fvk,
-                            &note,
-                            &memo, // memos are not used prior to voting
-                            height,
-                            position,
-                            *id_question,
-                            *scope,
-                        )
-                        .await?;
-                    }
+                    store_received_note(
+                        &mut db_tx,
+                        domain,
+                        id_account,
+                        &fvk,
+                        &note,
+                        &memo, // memos are not used prior to voting
+                        height,
+                        position,
+                        id_question,
+                        *scope,
+                    )
+                    .await?;
 
                     // track new note nullifier
                     let nf = note.nullifier_domain(&fvk, domain).to_bytes();
