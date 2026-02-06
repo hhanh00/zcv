@@ -7,8 +7,8 @@ use zcash_protocol::consensus::Network;
 
 use crate::api::Context;
 use crate::db::{get_domain, get_election, get_election_height};
-use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::lwd::{VoteClient, connect};
+use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
@@ -54,7 +54,9 @@ pub async fn scan_ballots(hash: String, id_account: u32, context: &Context) -> R
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
     let start = get_election_height(&mut conn, &hash).await? + 1;
-    let rep = client.get_latest_vote_height(Request::new(Empty {})).await?;
+    let rep = client
+        .get_latest_vote_height(Request::new(Empty {}))
+        .await?;
     let end = rep.into_inner().height;
     crate::lwd::scan_ballots(
         &Network::MainNetwork,
@@ -64,12 +66,43 @@ pub async fn scan_ballots(hash: String, id_account: u32, context: &Context) -> R
         id_account,
         start,
         end,
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
 
 #[frb]
-pub async fn get_balance(hash: String, id_account: u32, idx_question: u32, context: &Context) -> Result<u64> {
+pub async fn decode_ballots(hash: String, election_seed: String, context: &Context) -> Result<()> {
+    let mut conn = context.connect().await?;
+    let hash = hex::decode(&hash)?;
+    let ep = Endpoint::from_shared(context.election_url.clone())?;
+    let mut client = VoteStreamerClient::connect(ep).await?;
+    let election = get_election(&mut conn, &hash).await?;
+    let start = election.end;
+    let rep = client
+        .get_latest_vote_height(Request::new(Empty {}))
+        .await?;
+    let end = rep.into_inner().height;
+    crate::lwd::decode_ballots(
+        &Network::MainNetwork,
+        &mut conn,
+        &mut client,
+        &hash,
+        &election_seed,
+        start,
+        end,
+    )
+    .await?;
+    Ok(())
+}
+
+#[frb]
+pub async fn get_balance(
+    hash: String,
+    id_account: u32,
+    idx_question: u32,
+    context: &Context,
+) -> Result<u64> {
     let mut conn = context.connect().await?;
     let hash = hex::decode(&hash)?;
     let (domain, _) = get_domain(&mut conn, &hash, idx_question as usize).await?;
@@ -87,37 +120,85 @@ async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
     let mut ballot_bytes = vec![];
     ballot.write(&mut ballot_bytes)?;
     let mut client = connect_to_vote_server(context).await?;
-    client.submit_vote(Request::new(crate::vote_rpc::Ballot {
-        ballot: ballot_bytes,
-        ..Default::default()
-    })).await?;
+    client
+        .submit_vote(Request::new(crate::vote_rpc::Ballot {
+            ballot: ballot_bytes,
+            ..Default::default()
+        }))
+        .await?;
     Ok(())
 }
 
 #[frb]
-pub async fn vote(hash: String, id_account: u32, idx_question: u32, vote_content: String, amount: u64, context: &Context) -> Result<()> {
+pub async fn vote(
+    hash: String,
+    id_account: u32,
+    idx_question: u32,
+    vote_content: String,
+    amount: u64,
+    context: &Context,
+) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let memo = hex::decode(&vote_content)?;
     let mut conn = context.connect().await?;
-    let ballot = crate::vote::vote(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, &memo, amount).await?;
+    let ballot = crate::vote::vote(
+        &Network::MainNetwork,
+        &mut conn,
+        &hash,
+        id_account,
+        idx_question,
+        &memo,
+        amount,
+    )
+    .await?;
     submit_ballot(ballot, context).await?;
     Ok(())
 }
 
 #[frb]
-pub async fn mint(hash: String, id_account: u32, idx_question: u32, amount: u64, context: &Context) -> Result<()> {
+pub async fn mint(
+    hash: String,
+    id_account: u32,
+    idx_question: u32,
+    amount: u64,
+    context: &Context,
+) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
-    let ballot = crate::vote::mint(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, amount).await?;
+    let ballot = crate::vote::mint(
+        &Network::MainNetwork,
+        &mut conn,
+        &hash,
+        id_account,
+        idx_question,
+        amount,
+    )
+    .await?;
     submit_ballot(ballot, context).await?;
     Ok(())
 }
 
 #[frb]
-pub async fn delegate(hash: String, id_account: u32, idx_question: u32, address: &str, amount: u64, context: &Context) -> Result<()> {
+pub async fn delegate(
+    hash: String,
+    id_account: u32,
+    idx_question: u32,
+    address: &str,
+    amount: u64,
+    context: &Context,
+) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
-    let ballot = crate::vote::delegate(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, address, amount).await?;
+    let ballot = crate::vote::delegate(
+        &Network::MainNetwork,
+        &mut conn,
+        &hash,
+        id_account,
+        idx_question,
+        address,
+        amount,
+    )
+    .await?;
     submit_ballot(ballot, context).await?;
     Ok(())
 }
@@ -125,6 +206,20 @@ pub async fn delegate(hash: String, id_account: u32, idx_question: u32, address:
 #[frb]
 pub async fn get_account_address(id_account: u32, context: &Context) -> Result<String> {
     let mut conn = context.connect().await?;
-    let address = crate::db::get_account_address(&Network::MainNetwork, &mut conn, id_account).await?;
+    let address =
+        crate::db::get_account_address(&Network::MainNetwork, &mut conn, id_account).await?;
     Ok(address)
 }
+
+// pub async fn tally_election(hash: String, election_seed: String, context: &Context) -> Result<()> {
+//     let hash = hex::decode(&hash)?;
+//     let mut conn = context.connect().await?;
+//     crate::ballot::tally_election(&Network::MainNetwork, &mut conn, &election_seed, &hash).await?;
+//     Ok(())
+// }
+
+// pub async fn tally_plurality_election(
+//     network: &Network,
+//     conn: &mut SqliteConnection,
+//     election_seed: &str,
+//     hash: &[u8],
