@@ -50,6 +50,11 @@ impl Mutation {
         Ok(true)
     }
 
+    async fn collect_results(context: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::collect_results(&context.0).await?;
+        Ok(true)
+    }
+
     async fn vote(
         hash: String,
         id_account: i32,

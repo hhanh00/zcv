@@ -96,6 +96,12 @@ pub async fn decode_ballots(hash: String, election_seed: String, context: &Conte
     Ok(())
 }
 
+pub async fn collect_results(context: &Context) -> Result<()> {
+    let mut conn = context.connect().await?;
+    crate::vote::collect_results(&mut conn).await?;
+    Ok(())
+}
+
 #[frb]
 pub async fn get_balance(
     hash: String,

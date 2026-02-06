@@ -9,7 +9,7 @@ use crate::{
     pod::ElectionPropsPub,
     vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use parking_lot::Mutex;
@@ -62,7 +62,7 @@ impl ServerState {
         let mut conn = pool.acquire().await?;
         let (started,): (bool,) = query_as("SELECT started FROM state WHERE id = 0")
             .fetch_one(&mut *conn)
-            .await?;
+            .await.context("get started")?;
 
         Ok(Self {
             pool,
