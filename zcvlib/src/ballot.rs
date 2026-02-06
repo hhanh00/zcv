@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-use bech32::{Bech32m, Hrp};
 use ff::PrimeField;
 use orchard::{
     Address,
@@ -10,15 +7,15 @@ use orchard::{
 use pasta_curves::Fp;
 use rand::seq::SliceRandom;
 use rand_core::{CryptoRng, RngCore};
-use sqlx::{SqliteConnection, query, query_as};
+use sqlx::SqliteConnection;
 use zcash_protocol::consensus::Network;
 
 use crate::{
     ZCVError, ZCVResult,
     balance::list_unspent_notes,
-    db::{derive_spending_key, fetch_ballots, get_ivks, store_received_note},
+    db::{get_ivks, store_received_note},
     error::IntoAnyhow,
-    pod::{UTXO, ZCV_HRP},
+    pod::UTXO,
     tiu,
 };
 
@@ -177,110 +174,110 @@ pub async fn decrypt_ballot_data(
     Ok(())
 }
 
-pub const MAX_CHOICES: usize = 32;
-pub const MAX_QUESTIONS: usize = 64;
+// pub const MAX_CHOICES: usize = 32;
+// pub const MAX_QUESTIONS: usize = 64;
 
-fn plurality(
-    question: u32,
-    amount: u64,
-    memo: [u8; 512],
-    counts: &mut [u64; MAX_CHOICES * MAX_QUESTIONS],
-) -> ZCVResult<()> {
-    // each byte in the memo is a "vote" for the choice at
-    // that offset
-    // we do not use the complete memo in this type of voting
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..MAX_CHOICES {
-        let idx = question as usize * MAX_CHOICES + i;
-        if memo[i] != 0 {
-            counts[idx] += amount;
-        }
-    }
-    Ok(())
-}
+// fn plurality(
+//     question: u32,
+//     amount: u64,
+//     memo: [u8; 512],
+//     counts: &mut [u64; MAX_CHOICES * MAX_QUESTIONS],
+// ) -> ZCVResult<()> {
+//     // each byte in the memo is a "vote" for the choice at
+//     // that offset
+//     // we do not use the complete memo in this type of voting
+//     #[allow(clippy::needless_range_loop)]
+//     for i in 0..MAX_CHOICES {
+//         let idx = question as usize * MAX_CHOICES + i;
+//         if memo[i] != 0 {
+//             counts[idx] += amount;
+//         }
+//     }
+//     Ok(())
+// }
 
-pub async fn tally_plurality_election(
-    network: &Network,
-    conn: &mut SqliteConnection,
-    election_seed: &str,
-    hash: &[u8],
-) -> ZCVResult<()> {
-    let counts = tally_ballots(
-        network,
-        conn,
-        election_seed,
-        hash,
-        [0u64; MAX_CHOICES * MAX_QUESTIONS],
-        plurality,
-    )
-    .await?;
-    for (i, c) in counts.iter().enumerate() {
-        if *c == 0 {
-            continue;
-        }
-        let idx_question = i / MAX_CHOICES;
-        let idx_votes = i % MAX_CHOICES;
-        query(
-            "INSERT INTO results(question, answer, votes)
-        VALUES (?1, ?2, ?3)
-        ON CONFLICT DO UPDATE SET
-        votes = votes + excluded.votes",
-        )
-        .bind(idx_question as u32)
-        .bind(idx_votes as u32)
-        .bind(*c as i64)
-        .execute(&mut *conn)
-        .await?;
-    }
-    Ok(())
-}
+// pub async fn tally_plurality_election(
+//     network: &Network,
+//     conn: &mut SqliteConnection,
+//     election_seed: &str,
+//     hash: &[u8],
+// ) -> ZCVResult<()> {
+//     let counts = tally_ballots(
+//         network,
+//         conn,
+//         election_seed,
+//         hash,
+//         [0u64; MAX_CHOICES * MAX_QUESTIONS],
+//         plurality,
+//     )
+//     .await?;
+//     for (i, c) in counts.iter().enumerate() {
+//         if *c == 0 {
+//             continue;
+//         }
+//         let idx_question = i / MAX_CHOICES;
+//         let idx_votes = i % MAX_CHOICES;
+//         query(
+//             "INSERT INTO results(question, answer, votes)
+//         VALUES (?1, ?2, ?3)
+//         ON CONFLICT DO UPDATE SET
+//         votes = votes + excluded.votes",
+//         )
+//         .bind(idx_question as u32)
+//         .bind(idx_votes as u32)
+//         .bind(*c as i64)
+//         .execute(&mut *conn)
+//         .await?;
+//     }
+//     Ok(())
+// }
 
-pub async fn tally_ballots<R>(
-    network: &Network,
-    conn: &mut SqliteConnection,
-    election_seed: &str,
-    hash: &[u8],
-    mut result: R,
-    memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>,
-) -> ZCVResult<R> {
-    let domains: Vec<(u32, String)> = query_as(
-        "SELECT idx, address FROM questions q
-    JOIN elections e ON q.election = e.id_election
-    WHERE e.hash = ?1 ORDER BY idx",
-    )
-    .bind(hash)
-    .fetch_all(&mut *conn)
-    .await?;
-    let mut ivks: HashMap<u32, PreparedIncomingViewingKey> = HashMap::new();
-    for (idx, address) in domains {
-        let spk = derive_spending_key(network, election_seed, idx)?;
-        let fvk = FullViewingKey::from(&spk);
-        let ivk = fvk.to_ivk(Scope::External);
-        let pivk = PreparedIncomingViewingKey::new(&ivk);
-        let address2 = fvk.address_at(0u64, Scope::External);
-        let address2 = bech32::encode::<Bech32m>(
-            Hrp::parse(ZCV_HRP).unwrap(),
-            &address2.to_raw_address_bytes(),
-        )
-        .anyhow()?;
-        assert_eq!(address, address2);
-        ivks.insert(idx, pivk);
-    }
+// pub async fn tally_ballots<R>(
+//     network: &Network,
+//     conn: &mut SqliteConnection,
+//     election_seed: &str,
+//     hash: &[u8],
+//     mut result: R,
+//     memo_handler: impl Fn(u32, u64, [u8; 512], &mut R) -> ZCVResult<()>,
+// ) -> ZCVResult<R> {
+//     let domains: Vec<(u32, String)> = query_as(
+//         "SELECT idx, address FROM questions q
+//     JOIN elections e ON q.election = e.id_election
+//     WHERE e.hash = ?1 ORDER BY idx",
+//     )
+//     .bind(hash)
+//     .fetch_all(&mut *conn)
+//     .await?;
+//     let mut ivks: HashMap<u32, PreparedIncomingViewingKey> = HashMap::new();
+//     for (idx, address) in domains {
+//         let spk = derive_spending_key(network, election_seed, idx)?;
+//         let fvk = FullViewingKey::from(&spk);
+//         let ivk = fvk.to_ivk(Scope::External);
+//         let pivk = PreparedIncomingViewingKey::new(&ivk);
+//         let address2 = fvk.address_at(0u64, Scope::External);
+//         let address2 = bech32::encode::<Bech32m>(
+//             Hrp::parse(ZCV_HRP).unwrap(),
+//             &address2.to_raw_address_bytes(),
+//         )
+//         .anyhow()?;
+//         assert_eq!(address, address2);
+//         ivks.insert(idx, pivk);
+//     }
 
-    fetch_ballots(conn, async |question, ballot_data| {
-        let pivk = &ivks[&question];
-        for action in ballot_data.actions.into_iter() {
-            if let Some((note, memo)) = try_decrypt_ballot(pivk, action)? {
-                let votes = note.value().inner();
-                memo_handler(question, votes, memo, &mut result)?;
-            }
-        }
-        Ok(())
-    })
-    .await?;
+//     fetch_ballots(conn, async |question, ballot_data| {
+//         let pivk = &ivks[&question];
+//         for action in ballot_data.actions.into_iter() {
+//             if let Some((note, memo)) = try_decrypt_ballot(pivk, action)? {
+//                 let votes = note.value().inner();
+//                 memo_handler(question, votes, memo, &mut result)?;
+//             }
+//         }
+//         Ok(())
+//     })
+//     .await?;
 
-    Ok(result)
-}
+//     Ok(result)
+// }
 
 #[cfg(test)]
 mod tests {
@@ -295,18 +292,17 @@ mod tests {
         vote::{Ballot, BallotWitnesses, try_decrypt_ballot},
     };
     use rand_core::OsRng;
-    use sqlx::{Connection, query, query_as};
     use zcash_protocol::consensus::Network;
 
     use crate::{
         ZCVResult,
-        ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends, tally_plurality_election},
-        db::{derive_spending_key, get_domain, get_question},
+        ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends},
+        db::{derive_spending_key, get_domain},
         error::IntoAnyhow,
         pod::ZCV_HRP,
         tests::{
             TEST_ELECTION_HASH, TEST_ELECTION_SEED, TEST_SEED, get_connection, run_scan,
-            test_ballot, test_setup,
+            test_setup,
         },
     };
 
@@ -338,59 +334,59 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn test_tally_ballots() -> Result<()> {
-        let mut conn = get_connection().await?;
-        test_setup(&mut conn).await?;
-        run_scan(&mut conn).await?;
-        query("DELETE FROM ballots").execute(&mut *conn).await?;
-        query("DELETE FROM results").execute(&mut *conn).await?;
-        let mut tx = conn.begin().await?;
-        let (domain, address) = get_domain(&mut tx, TEST_ELECTION_HASH, 1).await?;
-        let question = get_question(&mut tx, domain).await?;
-        query("UPDATE notes SET value = value * 100000000")
-            .execute(&mut *tx)
-            .await?;
-        query("UPDATE spends SET value = value * 100000000")
-            .execute(&mut *tx)
-            .await?;
-        let ballot = test_ballot(&mut tx, domain, &address, &[0, 0, 1, 0]).await?;
-        let mut ballot_bytes = vec![];
-        ballot.write(&mut ballot_bytes)?;
-        for itx in 0..2 {
-            query(
-                "INSERT INTO ballots(height, itx, question, data, witnesses)
-        VALUES (1, ?1, ?2, ?3, '')",
-            )
-            .bind(itx)
-            .bind(question.index as u32)
-            .bind(&ballot_bytes)
-            .execute(&mut *tx)
-            .await?;
-        }
-        tally_plurality_election(
-            &Network::MainNetwork,
-            &mut tx,
-            TEST_ELECTION_SEED,
-            TEST_ELECTION_HASH,
-        )
-        .await?;
-        let (votes,): (i64,) =
-            query_as("SELECT votes FROM results WHERE question = 1 and answer = 2")
-                .fetch_one(&mut *tx)
-                .await?;
-        assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000
-        query("UPDATE notes SET value = value / 100000000")
-            .execute(&mut *tx)
-            .await?;
-        query("UPDATE spends SET value = value / 100000000")
-            .execute(&mut *tx)
-            .await?;
+    // #[tokio::test]
+    // #[serial_test::serial]
+    // async fn test_tally_ballots() -> Result<()> {
+    //     let mut conn = get_connection().await?;
+    //     test_setup(&mut conn).await?;
+    //     run_scan(&mut conn).await?;
+    //     query("DELETE FROM ballots").execute(&mut *conn).await?;
+    //     query("DELETE FROM results").execute(&mut *conn).await?;
+    //     let mut tx = conn.begin().await?;
+    //     let (domain, address) = get_domain(&mut tx, TEST_ELECTION_HASH, 1).await?;
+    //     let question = get_question(&mut tx, domain).await?;
+    //     query("UPDATE notes SET value = value * 100000000")
+    //         .execute(&mut *tx)
+    //         .await?;
+    //     query("UPDATE spends SET value = value * 100000000")
+    //         .execute(&mut *tx)
+    //         .await?;
+    //     let ballot = test_ballot(&mut tx, domain, &address, &[0, 0, 1, 0]).await?;
+    //     let mut ballot_bytes = vec![];
+    //     ballot.write(&mut ballot_bytes)?;
+    //     for itx in 0..2 {
+    //         query(
+    //             "INSERT INTO ballots(height, itx, question, data, witnesses)
+    //     VALUES (1, ?1, ?2, ?3, '')",
+    //         )
+    //         .bind(itx)
+    //         .bind(question.index as u32)
+    //         .bind(&ballot_bytes)
+    //         .execute(&mut *tx)
+    //         .await?;
+    //     }
+    //     tally_plurality_election(
+    //         &Network::MainNetwork,
+    //         &mut tx,
+    //         TEST_ELECTION_SEED,
+    //         TEST_ELECTION_HASH,
+    //     )
+    //     .await?;
+    //     let (votes,): (i64,) =
+    //         query_as("SELECT votes FROM results WHERE question = 1 and answer = 2")
+    //             .fetch_one(&mut *tx)
+    //             .await?;
+    //     assert_eq!(votes, 27_000_000_000_000); // 2 ballots of 135_000
+    //     query("UPDATE notes SET value = value / 100000000")
+    //         .execute(&mut *tx)
+    //         .await?;
+    //     query("UPDATE spends SET value = value / 100000000")
+    //         .execute(&mut *tx)
+    //         .await?;
 
-        tx.commit().await?;
-        Ok(())
-    }
+    //     tx.commit().await?;
+    //     Ok(())
+    // }
 
     #[tokio::test]
     async fn make_ballot_bin() -> ZCVResult<()> {
