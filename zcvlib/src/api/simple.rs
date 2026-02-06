@@ -121,3 +121,10 @@ pub async fn delegate(hash: String, id_account: u32, idx_question: u32, address:
     submit_ballot(ballot, context).await?;
     Ok(())
 }
+
+#[frb]
+pub async fn get_account_address(id_account: u32, context: &Context) -> Result<String> {
+    let mut conn = context.connect().await?;
+    let address = crate::db::get_account_address(&Network::MainNetwork, &mut conn, id_account).await?;
+    Ok(address)
+}
