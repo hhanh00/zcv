@@ -32,8 +32,21 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn scan_ballots(hash: String, id_account: i32, context: &GQLContext) -> FieldResult<bool> {
+    async fn scan_ballots(
+        hash: String,
+        id_account: i32,
+        context: &GQLContext,
+    ) -> FieldResult<bool> {
         zcvlib::api::simple::scan_ballots(hash, id_account as u32, &context.0).await?;
+        Ok(true)
+    }
+
+    async fn decode_ballots(
+        hash: String,
+        election_seed: String,
+        context: &GQLContext,
+    ) -> FieldResult<bool> {
+        zcvlib::api::simple::decode_ballots(hash, election_seed, &context.0).await?;
         Ok(true)
     }
 
@@ -92,6 +105,15 @@ impl Mutation {
         .await?;
         Ok(true)
     }
+
+    // pub async fn tally_election(
+    //     hash: String,
+    //     election_seed: String,
+    //     ctx: &GQLContext,
+    // ) -> FieldResult<bool> {
+    //     zcvlib::api::simple::tally_election(hash, election_seed, &ctx.0).await?;
+    //     Ok(true)
+    // }
 }
 
 fn to_zats(v: BigDecimal) -> anyhow::Result<u64> {

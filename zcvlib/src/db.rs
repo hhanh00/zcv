@@ -129,10 +129,10 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     // server / validator
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS results(
+        id_result INTEGER PRIMARY KEY,
         question INTEGER NOT NULL,
-        answer INTEGER NOT NULL,
-        votes INTEGER NOT NULL,
-        PRIMARY KEY (question, answer))",
+        answer BLOB NOT NULL,
+        votes INTEGER NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
@@ -354,6 +354,25 @@ pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<
     Ok(question)
 }
 
+pub async fn get_domains(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Vec<(u32, u32, Fp)>> {
+    let domains = query(
+        "SELECT q.id_question, q.idx, q.domain FROM questions q
+        JOIN elections e ON e.id_election = q.election
+        WHERE e.hash = ?1 ORDER BY q.idx",
+    )
+    .bind(hash)
+    .map(|r: SqliteRow| {
+        let id: u32 = r.get(0);
+        let idx: u32 = r.get(1);
+        let d: Vec<u8> = r.get(2);
+        let domain = Fp::from_repr(tiu!(d)).unwrap();
+        (id, idx, domain)
+    })
+    .fetch_all(conn)
+    .await?;
+    Ok(domains)
+}
+
 pub async fn list_unspent_nullifiers(
     conn: &mut SqliteConnection,
     id_account: u32,
@@ -499,22 +518,6 @@ pub async fn store_ballot(
     Ok(r.rows_affected() as u32)
 }
 
-pub async fn fetch_ballots(
-    conn: &mut SqliteConnection,
-    mut handler: impl AsyncFnMut(u32, BallotData) -> ZCVResult<()>,
-) -> ZCVResult<()> {
-    let mut s = query("SELECT question, data FROM ballots ORDER BY height, itx").fetch(conn);
-    while let Some(r) = s.next().await {
-        if let Ok(r) = r {
-            let question: u32 = r.get(0);
-            let data: Vec<u8> = r.get(1);
-            let ballot_data = BallotData::read(&*data).unwrap();
-            handler(question, ballot_data).await?;
-        }
-    }
-    Ok(())
-}
-
 pub async fn get_ballot_range(
     mut conn: SqliteConnection,
     start: u32,
@@ -556,11 +559,21 @@ pub async fn get_ballot_range(
     Ok(())
 }
 
+pub async fn store_result(conn: &mut SqliteConnection, idx_question: u32, memo: &[u8], value: u64) -> ZCVResult<()> {
+    query("INSERT INTO results(question, answer, votes)
+    VALUES (?1, ?2, ?3)")
+    .bind(idx_question)
+    .bind(memo)
+    .bind(value as i64)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        db::{fetch_ballots, get_domain, get_election, set_account_seed, store_ballot},
-        error::IntoAnyhow,
+        db::{get_domain, get_election, set_account_seed, store_ballot},
         tests::{TEST_ELECTION_HASH, get_connection, test_setup},
     };
     use anyhow::Result;
@@ -627,19 +640,6 @@ mod tests {
             .fetch_one(&mut *conn)
             .await?;
         assert_eq!(count_ballot, 1);
-
-        let mut count_ballot2 = 0u32;
-        fetch_ballots(&mut conn, async |_, ballot_data| {
-            let h = ballot_data.sighash().anyhow()?;
-            assert_eq!(
-                hex::encode(&h),
-                "942bc20fdda82c173dd2cd38033a62c96ee7424e47dc1e214186cc5d179caa67"
-            );
-            count_ballot2 += 1;
-            Ok(())
-        })
-        .await?;
-        assert_eq!(count_ballot, count_ballot2);
         Ok(())
     }
 }
