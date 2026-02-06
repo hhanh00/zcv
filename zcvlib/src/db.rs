@@ -301,13 +301,27 @@ pub async fn store_apphash(
     Ok(())
 }
 
-pub async fn store_election_height(
+pub async fn store_election_height_position(
+    db_tx: &mut SqliteConnection,
+    hash: &[u8],
+    height: u32,
+    position: u32,
+) -> ZCVResult<()> {
+    query("UPDATE elections SET height = ?1, position = ?2 WHERE hash = ?3")
+        .bind(height)
+        .bind(position)
+        .bind(hash)
+        .execute(db_tx)
+        .await?;
+    Ok(())
+}
+
+pub async fn store_election_height_inc_position(
     db_tx: &mut SqliteConnection,
     hash: &[u8],
     height: u32,
 ) -> ZCVResult<()> {
-    tracing::info!("store_election_height {} {height}", hex::encode(hash));
-    query("UPDATE elections SET height = ?1 WHERE hash = ?2")
+    query("UPDATE elections SET height = ?1, position = position + 1 WHERE hash = ?2")
         .bind(height)
         .bind(hash)
         .execute(db_tx)
@@ -350,6 +364,15 @@ pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVRes
     )
     .anyhow()?;
     Ok(spk)
+}
+
+pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> ZCVResult<()> {
+    query("DELETE FROM notes WHERE height >= ?1 AND height <= ?2")
+    .bind(start)
+    .bind(end)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

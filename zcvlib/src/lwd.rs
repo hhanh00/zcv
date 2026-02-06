@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    ZCVResult, db::{get_ivks, store_received_note, store_spend}, error::IntoAnyhow, rpc::{
+    ZCVResult, db::{get_ivks, store_election_height_position, store_received_note, store_spend}, error::IntoAnyhow, rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
     }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
@@ -158,6 +158,8 @@ pub async fn scan_ballots(
     end: u32,
 ) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
+    tracing::info!("scan_ballots [{start},{end}]");
+    crate::db::delete_range(&mut db_tx, start, end).await?;
 
     let domains = query(
         "SELECT q.id_question, q.domain FROM questions q
@@ -233,6 +235,8 @@ pub async fn scan_ballots(
             position += 1;
         }
     }
+    tracing::info!("height: {end}, position: {position}");
+    store_election_height_position(&mut db_tx, hash, end, position).await?;
     db_tx.commit().await?;
     Ok(())
 }

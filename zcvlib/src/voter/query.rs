@@ -17,20 +17,15 @@ impl Query {
         .map_err(|e| FieldError::new(e.to_string(), Value::Null))
     }
 
-    pub async fn get_account_address(id_account: i32, context: &GQLContext) -> FieldResult<String> {
+    async fn get_account_address(id_account: i32, context: &GQLContext) -> FieldResult<String> {
         let address = zcvlib::api::simple::get_account_address(id_account as u32, &context.0).await?;
         Ok(address)
     }
 
-    pub async fn get_balance(hash: String, id_account: i32, idx_question: i32, context: &GQLContext) -> FieldResult<BigDecimal> {
+    async fn get_balance(hash: String, id_account: i32, idx_question: i32, context: &GQLContext) -> FieldResult<BigDecimal> {
         let b = zcvlib::api::simple::get_balance(hash, idx_question as u32, id_account as u32, &context.0).await?;
         let digits = BigInt::from(b);
         let zec = BigDecimal::from_bigint(digits, 8);
         Ok(zec)
-    }
-
-    pub async fn scan_ballots(hash: String, id_account: i32, context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(hash, id_account as u32, &context.0).await?;
-        Ok(true)
     }
 }
