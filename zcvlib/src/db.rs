@@ -11,7 +11,7 @@ use orchard::{
     vote::{Ballot, BallotData, BallotWitnesses},
 };
 use pasta_curves::Fp;
-use sqlx::{Row, SqliteConnection, query, query_as};
+use sqlx::{Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -354,6 +354,25 @@ pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<
     Ok(question)
 }
 
+pub async fn list_unspent_nullifiers(
+    conn: &mut SqliteConnection,
+    id_account: u32,
+) -> ZCVResult<Vec<Vec<u8>>> {
+    let dnfs = query(
+        "SELECT n.dnf FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
+        WHERE s.id_note IS NULL
+        AND n.account = ?1",
+    )
+    .bind(id_account)
+    .map(|r: SqliteRow| {
+        let dnf: Vec<u8> = r.get(0);
+        dnf
+    })
+    .fetch_all(conn)
+    .await?;
+    Ok(dnfs)
+}
+
 pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVResult<SpendingKey> {
     let mnemonic = Mnemonic::parse(seed).anyhow()?;
     let seed = mnemonic.to_seed("");
@@ -427,6 +446,25 @@ pub async fn store_spend(
     )
     .bind(id_question)
     .bind(nf)
+    .bind(height)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+pub async fn store_ballot_spend(
+    conn: &mut SqliteConnection,
+    id_question: u32,
+    dnf: &[u8],
+    height: u32,
+) -> ZCVResult<()> {
+    query(
+        "INSERT INTO spends
+        (id_note, height, value)
+        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND dnf = ?2",
+    )
+    .bind(id_question)
+    .bind(dnf)
     .bind(height)
     .execute(conn)
     .await?;
