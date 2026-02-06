@@ -1,5 +1,13 @@
 use crate::{
-    ZCVError, ZCVResult, context::BFTContext, db::{get_apphash, set_election, store_apphash, store_ballot, store_election, store_election_height}, error::IntoAnyhow, pod::ElectionPropsPub, vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof}
+    ZCVError, ZCVResult,
+    context::BFTContext,
+    db::{
+        get_apphash, set_election, store_apphash, store_ballot, store_election,
+        store_election_height_inc_position,
+    },
+    error::IntoAnyhow,
+    pod::ElectionPropsPub,
+    vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -46,7 +54,7 @@ pub struct ServerState {
     pub hash: Vec<u8>,
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
-    pub election_hash: Option<[u8; 32]>
+    pub election_hash: Option<[u8; 32]>,
 }
 
 impl ServerState {
@@ -208,18 +216,14 @@ impl Application for Server {
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let election_hash = state.election_hash.unwrap();
                                 let h = election.end + height as u32;
-                                let rows_added = store_ballot(
-                                    &mut db_tx,
-                                    h,
-                                    itx as u32,
-                                    ballot,
-                                )
-                                .await?;
+                                let rows_added =
+                                    store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
                                 tracing::info!("{rows_added} tx added to db");
                                 if rows_added != 1 {
                                     tracing::info!("Tx already inserted {}", hex::encode(&hash));
                                 }
-                                store_election_height(&mut db_tx, &election_hash, h).await?;
+                                store_election_height_inc_position(&mut db_tx, &election_hash, h)
+                                    .await?;
                             }
                             TypeOneof::Start(_) => {
                                 state.started = true;
