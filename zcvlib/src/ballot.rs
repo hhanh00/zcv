@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use bech32::{Bech32m, Hrp};
 use ff::PrimeField;
 use orchard::{
-    Address, keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
+    Address,
+    keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
     vote::{BallotAnchors, BallotData, dummy_vote, encrypt_ballot_action, try_decrypt_ballot},
 };
 use pasta_curves::Fp;
@@ -63,7 +64,7 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn encrypt_ballot_data_with_spends<R: CryptoRng + RngCore>(
+pub(crate) async fn encrypt_ballot_data_with_spends<R: CryptoRng + RngCore>(
     network: &Network,
     conn: &mut SqliteConnection,
     domain: Fp,
@@ -114,16 +115,21 @@ async fn encrypt_ballot_data_with_spends<R: CryptoRng + RngCore>(
         let spend = spend.to_note(&fvk);
         let (output_amount, destination) = if i == 0 {
             (amount, recipient)
-        }
-        else if i == 1 {
+        } else if i == 1 {
             let change = amount_spent - amount;
             (change, change_address)
-        }
-        else {
+        } else {
             (0, recipient)
         };
-        let (action, _, _) =
-            encrypt_ballot_action(domain, fvk.clone(), &spend, destination, output_amount, memo, &mut rng)?;
+        let (action, _, _) = encrypt_ballot_action(
+            domain,
+            fvk.clone(),
+            &spend,
+            destination,
+            output_amount,
+            memo,
+            &mut rng,
+        )?;
         actions.push(action);
     }
     let ballot = BallotData {
@@ -278,8 +284,12 @@ pub async fn tally_ballots<R>(
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::Write;
+
     use anyhow::Result;
     use base64::Engine;
+    use bech32::{Bech32m, Hrp};
     use orchard::{
         keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
         vote::{Ballot, BallotWitnesses, try_decrypt_ballot},
@@ -293,9 +303,10 @@ mod tests {
         ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends, tally_plurality_election},
         db::{derive_spending_key, get_domain, get_question},
         error::IntoAnyhow,
+        pod::ZCV_HRP,
         tests::{
-            TEST_ELECTION_HASH, TEST_ELECTION_SEED, get_connection, run_scan, test_ballot,
-            test_setup,
+            TEST_ELECTION_HASH, TEST_ELECTION_SEED, TEST_SEED, get_connection, run_scan,
+            test_ballot, test_setup,
         },
     };
 
@@ -416,5 +427,51 @@ mod tests {
             base64::engine::general_purpose::STANDARD.encode(&ballot_bytes)
         );
         Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_ballot_scripts() -> Result<()> {
+        let mut script_file = File::create("add_ballots.sh")?;
+        let mut conn = get_connection().await?;
+        test_setup(&mut conn).await?;
+        let sk = derive_spending_key(&Network::MainNetwork, TEST_SEED, 0)?;
+        let fvk = FullViewingKey::from(&sk);
+        let address = fvk.to_ivk(Scope::External).address_at(0u64);
+        let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
+        let address = bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes())?;
+        let (domain, _) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
+        let ballot_data = encrypt_ballot_data_with_spends(
+            &Network::MainNetwork,
+            &mut conn,
+            domain,
+            0,
+            &address,
+            &[],
+            8_000_000_000_000u64,
+            vec![],
+            8_000_000_000_000u64,
+            OsRng,
+        )
+        .await?;
+        let ballot = Ballot {
+            data: ballot_data,
+            witnesses: BallotWitnesses {
+                proofs: vec![],
+                sp_signatures: None,
+                binding_signature: [0u8; 64],
+            },
+        };
+        let ballot = to_base64(ballot)?;
+        writeln!(script_file, "# mint")?;
+        writeln!(script_file,
+            "grpcurl -d '{{\"ballot\": \"{ballot}\"}}' --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SubmitVote"
+        )?;
+        Ok(())
+    }
+
+    fn to_base64(ballot: Ballot) -> Result<String> {
+        let mut ballot_bytes = vec![];
+        ballot.write(&mut ballot_bytes).anyhow()?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&ballot_bytes))
     }
 }

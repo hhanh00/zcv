@@ -1,6 +1,7 @@
 use std::pin::Pin;
 
 use anyhow::Context;
+use bech32::{Bech32m, Hrp};
 use bip39::Mnemonic;
 use ff::PrimeField;
 use futures::StreamExt;
@@ -17,7 +18,7 @@ use zip32::{AccountId, Scope};
 use crate::{
     ZCVResult,
     error::IntoAnyhow,
-    pod::{ElectionPropsPub, QuestionPropPub},
+    pod::{ElectionPropsPub, QuestionPropPub, ZCV_HRP},
     tiu,
 };
 
@@ -156,6 +157,19 @@ pub async fn set_account_seed(
     .execute(conn)
     .await?;
     Ok(())
+}
+
+pub async fn get_account_address(network: &Network, conn: &mut SqliteConnection, id_account: u32) -> ZCVResult<String> {
+    let (seed, aindex): (String, u32) = query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
+    .bind(id_account)
+    .fetch_one(conn)
+    .await?;
+    let sk = derive_spending_key(network, &seed, aindex)?;
+    let fvk = FullViewingKey::from(&sk);
+    let address = fvk.address_at(0u64, Scope::External);
+    let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
+    let address = bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
+    Ok(address)
 }
 
 pub async fn store_election(

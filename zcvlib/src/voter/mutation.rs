@@ -32,4 +32,16 @@ impl Mutation {
         zcvlib::api::simple::vote(hash, id_account as u32, idx_question as u32, vote_content, amount, &ctx.0).await?;
         Ok(true)
     }
+
+    async fn mint(hash: String, id_account: i32, idx_question: i32, amount: BigDecimal, ctx: &GQLContext) -> FieldResult<bool> {
+        let amount = amount.with_scale(8).to_u64().ok_or(anyhow::anyhow!("Invalid amount"))?;
+        zcvlib::api::simple::mint(hash, id_account as u32, idx_question as u32, amount, &ctx.0).await?;
+        Ok(true)
+    }
+
+    async fn delegate(hash: String, id_account: i32, idx_question: i32, address: String, amount: BigDecimal, ctx: &GQLContext) -> FieldResult<bool> {
+        let amount = amount.with_scale(8).to_u64().ok_or(anyhow::anyhow!("Invalid amount"))?;
+        zcvlib::api::simple::delegate(hash, id_account as u32, idx_question as u32, &address, amount, &ctx.0).await?;
+        Ok(true)
+    }
 }

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use flutter_rust_bridge::frb;
+use orchard::vote::Ballot;
 use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
@@ -7,7 +8,7 @@ use zcash_protocol::consensus::Network;
 use crate::api::Context;
 use crate::db::{get_domain, get_election, get_election_height};
 use crate::pod::{ElectionProps, ElectionPropsPub};
-use crate::lwd::connect;
+use crate::lwd::{VoteClient, connect};
 use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
@@ -76,19 +77,47 @@ pub async fn get_balance(hash: String, id_account: u32, idx_question: u32, conte
     Ok(balance)
 }
 
+async fn connect_to_vote_server(context: &Context) -> Result<VoteClient> {
+    let ep = Endpoint::from_shared(context.election_url.clone())?;
+    let client = VoteStreamerClient::connect(ep).await?;
+    Ok(client)
+}
+
+async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
+    let mut ballot_bytes = vec![];
+    ballot.write(&mut ballot_bytes)?;
+    let mut client = connect_to_vote_server(context).await?;
+    client.submit_vote(Request::new(crate::vote_rpc::Ballot {
+        ballot: ballot_bytes,
+        ..Default::default()
+    })).await?;
+    Ok(())
+}
+
+#[frb]
 pub async fn vote(hash: String, id_account: u32, idx_question: u32, vote_content: String, amount: u64, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let memo = hex::decode(&vote_content)?;
     let mut conn = context.connect().await?;
     let ballot = crate::vote::vote(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, &memo, amount).await?;
-    let mut ballot_bytes = vec![];
-    ballot.write(&mut ballot_bytes)?;
-    let ep = Endpoint::from_shared(context.election_url.clone())?;
-    let mut client = VoteStreamerClient::connect(ep).await?;
+    submit_ballot(ballot, context).await?;
+    Ok(())
+}
 
-    client.submit_vote(Request::new(crate::vote_rpc::Ballot {
-        ballot: ballot_bytes,
-        ..Default::default()
-    })).await?;
+#[frb]
+pub async fn mint(hash: String, id_account: u32, idx_question: u32, amount: u64, context: &Context) -> Result<()> {
+    let hash = hex::decode(&hash)?;
+    let mut conn = context.connect().await?;
+    let ballot = crate::vote::mint(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, amount).await?;
+    submit_ballot(ballot, context).await?;
+    Ok(())
+}
+
+#[frb]
+pub async fn delegate(hash: String, id_account: u32, idx_question: u32, address: &str, amount: u64, context: &Context) -> Result<()> {
+    let hash = hex::decode(&hash)?;
+    let mut conn = context.connect().await?;
+    let ballot = crate::vote::delegate(&Network::MainNetwork, &mut conn, &hash, id_account, idx_question, address, amount).await?;
+    submit_ballot(ballot, context).await?;
     Ok(())
 }
