@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    ZCVResult, db::{get_ivks, store_election_height_position, store_received_note, store_spend}, error::IntoAnyhow, rpc::{
+    ZCVResult, db::{get_ivks, list_unspent_nullifiers, store_ballot_spend, store_election_height_position, store_received_note, store_spend}, error::IntoAnyhow, rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
     }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
@@ -183,7 +183,10 @@ pub async fn scan_ballots(
     ];
 
     let mut nfs: HashSet<[u8; 32]> = HashSet::new();
-    // TODO: Load nfs from unspend notes domain nullifiers
+    for dnf in list_unspent_nullifiers(&mut db_tx, id_account).await? {
+        tracing::info!("dnf: {}", hex::encode(&dnf));
+        nfs.insert(tiu!(dnf));
+    }
 
     let mut ballots = client
         .get_vote_range(Request::new(VoteRange {
@@ -204,8 +207,10 @@ pub async fn scan_ballots(
         let id_question = domains.iter().find(|&d| d.1 == domain)
             .unwrap().0;
         for a in data.actions.iter() {
+            tracing::info!("-nf: {}", hex::encode(a.nf));
             if nfs.contains(&a.nf) {
-                store_spend(&mut db_tx, id_question, &a.nf, height).await?;
+                tracing::info!("Spend for {id_question}");
+                store_ballot_spend(&mut db_tx, id_question, &a.nf, height).await?;
             }
 
             for (scope, pivk) in ivks.iter() {
