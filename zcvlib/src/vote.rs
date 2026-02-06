@@ -63,7 +63,7 @@ pub async fn delegate(
     let (domain, _) = get_domain(conn, hash, idx_question).await?;
 
     let data = encrypt_ballot_data(
-        network, conn, domain, id_account, &address, &[], amount,
+        network, conn, domain, id_account, address, &[], amount,
         OsRng,
     )
     .await?;
