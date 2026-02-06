@@ -19,6 +19,7 @@ use crate::{
 };
 
 pub const TEST_SEED: &str = "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew";
+pub const TEST_SEED2: &str = "purity comic seek skull unfair host point dutch drive fiction frame race hollow glow render okay add slogan upset use sick cinnamon horn lock";
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 pub const TEST_ELECTION_HASH: &[u8] =
