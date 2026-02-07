@@ -7,6 +7,7 @@ use crate::{
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
+    tiu,
     vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::{Context, anyhow};
@@ -15,8 +16,9 @@ use blake2b_simd::Params;
 use parking_lot::Mutex;
 use prost::Message;
 use serde_json::{Value, json};
-use sqlx::{Acquire, SqlitePool, query, query_as};
+use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
 use std::{
+    collections::HashSet,
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
@@ -30,6 +32,7 @@ use tendermint_proto::{
     },
     crypto::{PublicKey, public_key::Sum},
 };
+use tokio::runtime::Runtime;
 
 pub mod rpc;
 
@@ -62,7 +65,8 @@ impl ServerState {
         let mut conn = pool.acquire().await?;
         let (started,): (bool,) = query_as("SELECT started FROM state WHERE id = 0")
             .fetch_one(&mut *conn)
-            .await.context("get started")?;
+            .await
+            .context("get started")?;
 
         Ok(Self {
             pool,
@@ -71,12 +75,6 @@ impl ServerState {
             election: None,
             election_hash: None,
         })
-    }
-
-    pub fn check_ballot(&mut self, ballot: orchard::vote::Ballot) -> ZCVResult<()> {
-        tracing::info!("check_ballot {:?}", &ballot);
-        // TODO: Verify ballot signature & zkp, no need to verify double-spend yet
-        Ok(())
     }
 }
 
@@ -90,7 +88,13 @@ impl Application for Server {
     // But bad txs may be kept for the moment
     fn check_tx(&self, request: RequestCheckTx) -> ResponseCheckTx {
         let RequestCheckTx { mut tx, .. } = request;
-        let mut check = || {
+        let rt = Runtime::new().unwrap();
+        let data = rt.block_on(async move {
+            let pool = {
+                let state = self.state.lock();
+                state.pool.clone()
+            };
+            let mut conn = pool.acquire().await?;
             let msg = VoteMessage::decode(&mut tx)?;
             let msg = msg.type_oneof.ok_or(anyhow!("Must have payload"))?;
             let res = match msg {
@@ -99,10 +103,9 @@ impl Application for Server {
                     election.hash()?.to_vec()
                 }
                 TypeOneof::Ballot(ballot) => {
-                    let mut state = self.state.lock();
                     let ballot = from_protobuf(&ballot)?;
                     let hash = ballot.data.sighash()?;
-                    state.check_ballot(ballot)?;
+                    check_ballot(&mut conn, ballot).await?;
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
@@ -121,9 +124,9 @@ impl Application for Server {
                 }
             };
             Ok::<_, anyhow::Error>(res)
-        };
+        });
 
-        match check() {
+        match data {
             Ok(data) => ResponseCheckTx {
                 code: 0,
                 data: data.into(),
@@ -133,7 +136,6 @@ impl Application for Server {
                 tracing::info!("check_tx error: {}", err.to_string());
                 ResponseCheckTx {
                     code: 1,
-                    data: tx,
                     log: err.to_string(),
                     ..Default::default()
                 }
@@ -151,23 +153,56 @@ impl Application for Server {
         // RequestPrepareProposal.max_tx_bytes limit is respected by those
         // transactions returned in ResponsePrepareProposal.txs.
         let RequestPrepareProposal {
-            mut txs,
-            max_tx_bytes,
-            ..
+            txs, max_tx_bytes, ..
         } = request;
-        let max_tx_bytes: usize = max_tx_bytes.try_into().unwrap_or(0);
-        let mut total_tx_bytes: usize = txs
-            .iter()
-            .map(|tx| tx.len())
-            .fold(0, |acc, len| acc.saturating_add(len));
-        while total_tx_bytes > max_tx_bytes {
-            if let Some(tx) = txs.pop() {
-                total_tx_bytes = total_tx_bytes.saturating_sub(tx.len());
-            } else {
-                break;
-            }
-        }
-        ResponsePrepareProposal { txs }
+        let max_tx_bytes = max_tx_bytes as usize;
+
+        let rt = Runtime::new().unwrap();
+        let proposed_txs = rt
+            .block_on(async move {
+                let pool = {
+                    let state = self.state.lock();
+                    state.pool.clone()
+                };
+                let mut conn = pool.acquire().await?;
+
+                let mut nfs: HashSet<[u8; 32]> = HashSet::new();
+                let mut proposed_txs = vec![];
+                let mut proposed_len = 0;
+                'next_tx: for tx in txs {
+                    let mut tx2 = tx.clone();
+                    let msg = VoteMessage::decode(&mut tx2)?;
+                    // expect was checked by check_tx
+                    let m = msg.type_oneof.expect("VoteMessage must have content");
+                    if let TypeOneof::Ballot(ballot) = m {
+                        let ballot = from_protobuf(&ballot).anyhow()?;
+                        for a in ballot.data.actions {
+                            let nf: [u8; 32] = tiu!(a.nf);
+                            if nfs.contains(&nf) {
+                                tracing::info!("Duplicate tx intra block");
+                                continue 'next_tx;
+                            }
+                            nfs.insert(nf);
+
+                            let exists = check_dup_nf(&mut conn, &nf).await?;
+                            if exists {
+                                tracing::info!("Duplicate tx inter block (skip from proposal)");
+                                continue 'next_tx;
+                            }
+                        }
+                    }
+
+                    if proposed_len + tx.len() > max_tx_bytes {
+                        break;
+                    }
+                    proposed_len += tx.len();
+                    proposed_txs.push(tx);
+                }
+                Ok::<_, anyhow::Error>(proposed_txs)
+            })
+            .expect("Error in proposed_tx");
+
+        ResponsePrepareProposal { txs: proposed_txs }
     }
 
     // Process the block that was voted on by the validators
@@ -216,10 +251,9 @@ impl Application for Server {
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let election_hash = state.election_hash.unwrap();
                                 let h = election.end + height as u32;
-                                let rows_added =
+                                let id_ballot =
                                     store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
-                                tracing::info!("{rows_added} tx added to db");
-                                if rows_added != 1 {
+                                if id_ballot.is_none() {
                                     tracing::info!("Tx already inserted {}", hex::encode(&hash));
                                 }
                                 store_election_height_inc_position(&mut db_tx, &election_hash, h)
@@ -276,6 +310,29 @@ impl Application for Server {
             ..ResponseFinalizeBlock::default()
         }
     }
+}
+
+pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<bool> {
+    let exists = query("SELECT 1 FROM actions WHERE dnf = ?1")
+        .bind(nf)
+        .fetch_optional(&mut *conn)
+        .await?
+        .is_some();
+    Ok(exists)
+}
+
+pub async fn check_ballot(
+    conn: &mut SqliteConnection,
+    ballot: orchard::vote::Ballot,
+) -> ZCVResult<()> {
+    for a in ballot.data.actions {
+        let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
+        if exists {
+            tracing::info!("Duplicate tx inter block (skip from proposal)");
+            return Err(ZCVError::Duplicate);
+        }
+    }
+    Ok(())
 }
 
 pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {

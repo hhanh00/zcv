@@ -11,7 +11,7 @@ use orchard::{
     vote::{Ballot, BallotData, BallotWitnesses},
 };
 use pasta_curves::Fp;
-use sqlx::{Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
+use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -75,16 +75,6 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
-    query(
-        "CREATE TABLE IF NOT EXISTS actions(
-        id_action INTEGER PRIMARY KEY,
-        height INTEGER NOT NULL,
-        idx INTEGER NOT NULL,
-        nf BLOB NOT NULL,
-        cmx BLOB NOT NULL)",
-    )
-    .execute(&mut *conn)
-    .await?;
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notes(
         id_note INTEGER PRIMARY KEY,
@@ -123,6 +113,17 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         data BLOB NOT NULL,
         witnesses BLOB NOT NULL,
         UNIQUE (height, itx))",
+    )
+    .execute(&mut *conn)
+    .await?;
+    query(
+        "CREATE TABLE IF NOT EXISTS actions(
+        id_action INTEGER PRIMARY KEY,
+        height INTEGER NOT NULL,
+        ballot INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        dnf BLOB NOT NULL,
+        cmx BLOB NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
@@ -214,7 +215,8 @@ pub async fn store_election(
     .bind(&election.name)
     .bind(&json)
     .fetch_one(&mut *conn)
-    .await.context("store_election")?;
+    .await
+    .context("store_election")?;
     for (i, q) in election.questions.iter().enumerate() {
         let q_js = serde_json::to_string(q).anyhow()?;
         let domain = q.domain(election)?;
@@ -251,7 +253,8 @@ pub async fn get_ivks(
         query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
             .bind(id_account)
             .fetch_one(conn)
-            .await.context("get_ivks")?;
+            .await
+            .context("get_ivks")?;
     let spk = derive_spending_key(network, &seed, aindex)?;
     let fvk = FullViewingKey::from(&spk);
     let ivks = (fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal));
@@ -349,7 +352,8 @@ pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZC
     let (height,): (u32,) = query_as("SELECT height FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
-        .await.context("get election height")?;
+        .await
+        .context("get election height")?;
     Ok(height)
 }
 
@@ -357,7 +361,8 @@ pub async fn get_election_position(conn: &mut SqliteConnection, hash: &[u8]) -> 
     let (position,): (u32,) = query_as("SELECT position FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
-        .await.context("get election position")?;
+        .await
+        .context("get election position")?;
     Ok(position)
 }
 
@@ -365,7 +370,8 @@ pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<
     let (data,): (String,) = query_as("SELECT data FROM questions WHERE domain = ?1")
         .bind(domain.to_repr().as_slice())
         .fetch_one(conn)
-        .await.context("get question")?;
+        .await
+        .context("get question")?;
     let question: QuestionPropPub = serde_json::from_str(&data).unwrap();
     Ok(question)
 }
@@ -514,7 +520,7 @@ pub async fn store_ballot(
     height: u32,
     itx: u32,
     ballot: Ballot,
-) -> ZCVResult<u32> {
+) -> ZCVResult<Option<u32>> {
     let Ballot { data, witnesses } = ballot;
     let domain = &data.domain;
     let mut data_bytes = vec![];
@@ -522,19 +528,37 @@ pub async fn store_ballot(
     let mut witnesses_bytes = vec![];
     witnesses.write(&mut witnesses_bytes).anyhow()?;
 
-    let r = query(
+    let mut db_tx = conn.begin().await?;
+    let (id_ballot,): (Option<u32>,) = query_as(
         "INSERT INTO ballots(height, itx, question, data, witnesses)
     SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
-    WHERE domain = ?5 ON CONFLICT DO NOTHING",
+    WHERE domain = ?5 ON CONFLICT DO NOTHING
+    RETURNING id_ballot",
     )
     .bind(height)
     .bind(itx)
     .bind(&data_bytes)
     .bind(&witnesses_bytes)
     .bind(domain.as_slice())
-    .execute(conn)
+    .fetch_one(&mut *db_tx)
     .await?;
-    Ok(r.rows_affected() as u32)
+    if let Some(id_ballot) = id_ballot {
+        for (idx, a) in data.actions.iter().enumerate() {
+            query(
+                "INSERT INTO actions(ballot, idx, height, dnf, cmx)
+        VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .bind(id_ballot)
+            .bind(idx as u32)
+            .bind(height)
+            .bind(a.nf.as_slice())
+            .bind(a.cmx.as_slice())
+            .execute(&mut *db_tx)
+            .await?;
+        }
+    }
+    db_tx.commit().await?;
+    Ok(id_ballot)
 }
 
 pub async fn get_ballot_range(
