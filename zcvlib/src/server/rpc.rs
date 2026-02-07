@@ -1,5 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
+use anyhow::Context;
 use prost::Message;
 use sqlx::query_as;
 use tokio::sync::{Mutex, mpsc};
@@ -70,7 +71,7 @@ impl VoteStreamer for ZCVServer {
                 WHERE s.id = 0",
             )
             .fetch_one(&mut *conn)
-            .await?;
+            .await.context("get latest vote height")?;
             Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash }))
         };
         res.await.map_err(to_tonic)

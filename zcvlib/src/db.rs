@@ -136,6 +136,16 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS final_results(
+        idx_question INTEGER NOT NULL,
+        idx_sub_question INTEGER NOT NULL,
+        idx_answer INTEGER NOT NULL,
+        votes INTEGER NOT NULL,
+        PRIMARY KEY (idx_question, idx_sub_question, idx_answer))",
+    )
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
@@ -159,11 +169,17 @@ pub async fn set_account_seed(
     Ok(())
 }
 
-pub async fn get_account_address(network: &Network, conn: &mut SqliteConnection, id_account: u32) -> ZCVResult<String> {
-    let (seed, aindex): (String, u32) = query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
-    .bind(id_account)
-    .fetch_one(conn)
-    .await?;
+pub async fn get_account_address(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    id_account: u32,
+) -> ZCVResult<String> {
+    let (seed, aindex): (String, u32) =
+        query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
+            .bind(id_account)
+            .fetch_one(conn)
+            .await
+            .context("get_account_address")?;
     let sk = derive_spending_key(network, &seed, aindex)?;
     let fvk = FullViewingKey::from(&sk);
     let address = fvk.address_at(0u64, Scope::External);
@@ -198,7 +214,7 @@ pub async fn store_election(
     .bind(&election.name)
     .bind(&json)
     .fetch_one(&mut *conn)
-    .await?;
+    .await.context("store_election")?;
     for (i, q) in election.questions.iter().enumerate() {
         let q_js = serde_json::to_string(q).anyhow()?;
         let domain = q.domain(election)?;
@@ -235,7 +251,7 @@ pub async fn get_ivks(
         query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
             .bind(id_account)
             .fetch_one(conn)
-            .await?;
+            .await.context("get_ivks")?;
     let spk = derive_spending_key(network, &seed, aindex)?;
     let fvk = FullViewingKey::from(&spk);
     let ivks = (fvk.to_ivk(Scope::External), fvk.to_ivk(Scope::Internal));
@@ -333,15 +349,15 @@ pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZC
     let (height,): (u32,) = query_as("SELECT height FROM elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
-        .await?;
+        .await.context("get election height")?;
     Ok(height)
 }
 
 pub async fn get_election_position(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
-    let (position, ): (u32, ) = query_as("SELECT position FROM elections WHERE hash = ?1")
-    .bind(hash)
-    .fetch_one(conn)
-    .await?;
+    let (position,): (u32,) = query_as("SELECT position FROM elections WHERE hash = ?1")
+        .bind(hash)
+        .fetch_one(conn)
+        .await.context("get election position")?;
     Ok(position)
 }
 
@@ -349,12 +365,15 @@ pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<
     let (data,): (String,) = query_as("SELECT data FROM questions WHERE domain = ?1")
         .bind(domain.to_repr().as_slice())
         .fetch_one(conn)
-        .await?;
+        .await.context("get question")?;
     let question: QuestionPropPub = serde_json::from_str(&data).unwrap();
     Ok(question)
 }
 
-pub async fn get_domains(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Vec<(u32, u32, Fp)>> {
+pub async fn get_domains(
+    conn: &mut SqliteConnection,
+    hash: &[u8],
+) -> ZCVResult<Vec<(u32, u32, Fp)>> {
     let domains = query(
         "SELECT q.id_question, q.idx, q.domain FROM questions q
         JOIN elections e ON e.id_election = q.election
@@ -406,10 +425,10 @@ pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVRes
 
 pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> ZCVResult<()> {
     query("DELETE FROM notes WHERE height >= ?1 AND height <= ?2")
-    .bind(start)
-    .bind(end)
-    .execute(conn)
-    .await?;
+        .bind(start)
+        .bind(end)
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -522,7 +541,10 @@ pub async fn get_ballot_range(
     mut conn: SqliteConnection,
     start: u32,
     end: u32,
-    handler: impl Fn(crate::vote_rpc::Ballot) -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>> + 'static + Send + Sync
+    handler: impl Fn(crate::vote_rpc::Ballot) -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>>
+    + 'static
+    + Send
+    + Sync,
 ) -> ZCVResult<()> {
     tokio::spawn(async move {
         let mut s = query(
@@ -540,10 +562,7 @@ pub async fn get_ballot_range(
                 let witnesses: Vec<u8> = r.get(3);
                 let data = BallotData::read(&*data)?;
                 let witnesses = BallotWitnesses::read(&*witnesses)?;
-                let b = Ballot {
-                    data,
-                    witnesses,
-                };
+                let b = Ballot { data, witnesses };
                 let mut ballot = vec![];
                 b.write(&mut ballot)?;
                 let ballot = crate::vote_rpc::Ballot {
@@ -559,9 +578,16 @@ pub async fn get_ballot_range(
     Ok(())
 }
 
-pub async fn store_result(conn: &mut SqliteConnection, idx_question: u32, memo: &[u8], value: u64) -> ZCVResult<()> {
-    query("INSERT INTO results(question, answer, votes)
-    VALUES (?1, ?2, ?3)")
+pub async fn store_result(
+    conn: &mut SqliteConnection,
+    idx_question: u32,
+    memo: &[u8],
+    value: u64,
+) -> ZCVResult<()> {
+    query(
+        "INSERT INTO results(question, answer, votes)
+    VALUES (?1, ?2, ?3)",
+    )
     .bind(idx_question)
     .bind(memo)
     .bind(value as i64)
