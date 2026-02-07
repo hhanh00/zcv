@@ -5,6 +5,8 @@ use anyhow::Error as AnyError;
 pub enum Error {
     #[error("Not Enough Votes Remaining")]
     NotEnoughVotes,
+    #[error("Duplicate Nullifier")]
+    Duplicate,
     #[error(transparent)]
     Vote(#[from] orchard::vote::VoteError),
     #[error(transparent)]
