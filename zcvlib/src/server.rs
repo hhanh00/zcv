@@ -105,6 +105,8 @@ impl Application for Server {
                 TypeOneof::Ballot(ballot) => {
                     let ballot = from_protobuf(&ballot)?;
                     let hash = ballot.data.sighash()?;
+                    // Fail on inter block double spend (but passes on intra block
+                    // duplicate because it checks against the db)
                     check_ballot(&mut conn, ballot).await?;
                     hash
                 }
@@ -160,12 +162,6 @@ impl Application for Server {
         let rt = Runtime::new().unwrap();
         let proposed_txs = rt
             .block_on(async move {
-                let pool = {
-                    let state = self.state.lock();
-                    state.pool.clone()
-                };
-                let mut conn = pool.acquire().await?;
-
                 let mut nfs: HashSet<[u8; 32]> = HashSet::new();
                 let mut proposed_txs = vec![];
                 let mut proposed_len = 0;
@@ -178,17 +174,12 @@ impl Application for Server {
                         let ballot = from_protobuf(&ballot).anyhow()?;
                         for a in ballot.data.actions {
                             let nf: [u8; 32] = tiu!(a.nf);
+                            // Do not include double spend mempool tx
                             if nfs.contains(&nf) {
                                 tracing::info!("Duplicate tx intra block");
                                 continue 'next_tx;
                             }
                             nfs.insert(nf);
-
-                            let exists = check_dup_nf(&mut conn, &nf).await?;
-                            if exists {
-                                tracing::info!("Duplicate tx inter block (skip from proposal)");
-                                continue 'next_tx;
-                            }
                         }
                     }
 
@@ -251,6 +242,7 @@ impl Application for Server {
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let election_hash = state.election_hash.unwrap();
                                 let h = election.end + height as u32;
+                                // This will catch and fail on a double spend because of the UNIQUE dnf
                                 let id_ballot =
                                     store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
                                 if id_ballot.is_none() {

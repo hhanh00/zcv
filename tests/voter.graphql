@@ -1,0 +1,59 @@
+mutation storeElection {
+  storeElection(electionJson: "{\"start\":3155000,\"end\":3169000,\"need_sig\":true,\"name\":\"Test Election\",\"questions\":[{\"title\":\"Q1. What is your favorite color?\",\"subtitle\":\"\",\"index\":0,\"address\":\"zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Red\",\"Green\",\"Blue\"]}]},{\"title\":\"Q2. Is the earth flat?\",\"subtitle\":\"\",\"index\":1,\"address\":\"zcv1panzgdd6kyygjqtykys6snl9sy59tdnhrpmezdamlt0umxcgs3z4mrndy7eajpkpxerry7tvccv\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Yes\",\"No\"]}]},{\"title\":\"Q3. Do you like pizza?\",\"subtitle\":\"\",\"index\":2,\"address\":\"zcv1yk6u9k8t6087ru4vsjfzepfw9yhhgpnua27r74wmqyqetn35663c62tnfzw46vqqtu2g54jwqt8\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Yes\",\"No\"]}]}]}")
+}
+
+mutation electionSeed {
+  setSeed(seed: "stool rich together paddle together pool raccoon promote attitude peasant latin concert"
+  idAccount: 1
+  aindex: 1
+  )}
+
+mutation seed {
+  setSeed(seed: "path memory sun borrow real air lyrics way floor oblige beyond mouse wrap lyrics save doll slush rice absorb panel smile bid clog nephew"
+  idAccount: 2
+  aindex: 0
+  )}
+
+mutation seed2 {
+  setSeed(seed: "purity comic seek skull unfair host point dutch drive fiction frame race hollow glow render okay add slogan upset use sick cinnamon horn lock"
+  idAccount: 3
+  aindex: 0
+  )}
+
+mutation mint ($hash: String!) {
+  mint(idAccount: 2 amount: 10000.5 idxQuestion: 1 hash: $hash)
+}
+
+query addr {
+  getAccountAddress(idAccount: 3)
+}
+
+mutation delegate ($hash: String!) {
+  delegate(idAccount: 2 address: "zcv1s2v35htdrzh4t3lmm46qmplsk4nrd2y4tq5c38es5alfluu5e4hxydu3fccdvjrwtq2e56eljj6"
+  amount: 5.2 hash: $hash idxQuestion: 1
+  )
+}
+
+mutation vote ($hash: String!) {
+  vote(idAccount: 2 amount: "1" hash: $hash
+  idxQuestion: 1 voteContent: "010201")
+}
+
+mutation scan($hash: String!) {
+  scanBallots(hash: $hash
+  idAccount: 2
+  )
+}
+
+mutation tally ($hash: String!) {
+  decodeBallots(electionSeed: "stool rich together paddle together pool raccoon promote attitude peasant latin concert"
+  hash: $hash)
+}
+
+query bal ($hash: String!) {
+  getBalance(idAccount: 2 hash: $hash idxQuestion: 1)
+}
+
+mutation collect {
+  collectResults
+}
