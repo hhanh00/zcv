@@ -123,7 +123,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         ballot INTEGER NOT NULL,
         idx INTEGER NOT NULL,
         dnf BLOB NOT NULL,
-        cmx BLOB NOT NULL)",
+        cmx BLOB NOT NULL,
+        UNIQUE (dnf))",
     )
     .execute(&mut *conn)
     .await?;
@@ -529,7 +530,7 @@ pub async fn store_ballot(
     witnesses.write(&mut witnesses_bytes).anyhow()?;
 
     let mut db_tx = conn.begin().await?;
-    let (id_ballot,): (Option<u32>,) = query_as(
+    let id_ballot = query(
         "INSERT INTO ballots(height, itx, question, data, witnesses)
     SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
     WHERE domain = ?5 ON CONFLICT DO NOTHING
@@ -540,8 +541,10 @@ pub async fn store_ballot(
     .bind(&data_bytes)
     .bind(&witnesses_bytes)
     .bind(domain.as_slice())
-    .fetch_one(&mut *db_tx)
-    .await?;
+    .map(|r: SqliteRow| r.get::<u32, _>(0))
+    .fetch_optional(&mut *db_tx)
+    .await
+    .context("store ballot")?;
     if let Some(id_ballot) = id_ballot {
         for (idx, a) in data.actions.iter().enumerate() {
             query(
