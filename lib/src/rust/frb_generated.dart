@@ -67,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 206429616;
+  int get rustContentHash => 1251248741;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -92,9 +92,31 @@ abstract class RustLibApi extends BaseApi {
     required String lwdUrl,
   });
 
+  Future<void> crateApiSimpleCollectResults({required Context context});
+
   String crateApiSimpleCompileElectionDef({
     required String electionJson,
     required String seed,
+  });
+
+  Future<void> crateApiSimpleDecodeBallots({
+    required String hash,
+    required String electionSeed,
+    required Context context,
+  });
+
+  Future<void> crateApiSimpleDelegate({
+    required String hash,
+    required int idAccount,
+    required int idxQuestion,
+    required String address,
+    required BigInt amount,
+    required Context context,
+  });
+
+  Future<String> crateApiSimpleGetAccountAddress({
+    required int idAccount,
+    required Context context,
   });
 
   Future<BigInt> crateApiSimpleGetBalance({
@@ -105,6 +127,14 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<void> crateApiInitInitApp();
+
+  Future<void> crateApiSimpleMint({
+    required String hash,
+    required int idAccount,
+    required int idxQuestion,
+    required BigInt amount,
+    required Context context,
+  });
 
   Future<void> crateApiSimpleScanBallots({
     required String hash,
@@ -272,6 +302,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiSimpleCollectResults({required Context context}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
+            context,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleCollectResultsConstMeta,
+        argValues: [context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleCollectResultsConstMeta =>
+      const TaskConstMeta(debugName: "collect_results", argNames: ["context"]);
+
+  @override
   String crateApiSimpleCompileElectionDef({
     required String electionJson,
     required String seed,
@@ -282,7 +343,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(electionJson, serializer);
           sse_encode_String(seed, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -299,6 +360,136 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "compile_election_def",
         argNames: ["electionJson", "seed"],
+      );
+
+  @override
+  Future<void> crateApiSimpleDecodeBallots({
+    required String hash,
+    required String electionSeed,
+    required Context context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(hash, serializer);
+          sse_encode_String(electionSeed, serializer);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
+            context,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleDecodeBallotsConstMeta,
+        argValues: [hash, electionSeed, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleDecodeBallotsConstMeta =>
+      const TaskConstMeta(
+        debugName: "decode_ballots",
+        argNames: ["hash", "electionSeed", "context"],
+      );
+
+  @override
+  Future<void> crateApiSimpleDelegate({
+    required String hash,
+    required int idAccount,
+    required int idxQuestion,
+    required String address,
+    required BigInt amount,
+    required Context context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(hash, serializer);
+          sse_encode_u_32(idAccount, serializer);
+          sse_encode_u_32(idxQuestion, serializer);
+          sse_encode_String(address, serializer);
+          sse_encode_u_64(amount, serializer);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
+            context,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleDelegateConstMeta,
+        argValues: [hash, idAccount, idxQuestion, address, amount, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleDelegateConstMeta => const TaskConstMeta(
+    debugName: "delegate",
+    argNames: [
+      "hash",
+      "idAccount",
+      "idxQuestion",
+      "address",
+      "amount",
+      "context",
+    ],
+  );
+
+  @override
+  Future<String> crateApiSimpleGetAccountAddress({
+    required int idAccount,
+    required Context context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(idAccount, serializer);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
+            context,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleGetAccountAddressConstMeta,
+        argValues: [idAccount, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetAccountAddressConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_account_address",
+        argNames: ["idAccount", "context"],
       );
 
   @override
@@ -322,7 +513,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 10,
             port: port_,
           );
         },
@@ -351,7 +542,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 11,
             port: port_,
           );
         },
@@ -368,6 +559,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiInitInitAppConstMeta =>
       const TaskConstMeta(debugName: "init_app", argNames: []);
+
+  @override
+  Future<void> crateApiSimpleMint({
+    required String hash,
+    required int idAccount,
+    required int idxQuestion,
+    required BigInt amount,
+    required Context context,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(hash, serializer);
+          sse_encode_u_32(idAccount, serializer);
+          sse_encode_u_32(idxQuestion, serializer);
+          sse_encode_u_64(amount, serializer);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerContext(
+            context,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleMintConstMeta,
+        argValues: [hash, idAccount, idxQuestion, amount, context],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleMintConstMeta => const TaskConstMeta(
+    debugName: "mint",
+    argNames: ["hash", "idAccount", "idxQuestion", "amount", "context"],
+  );
 
   @override
   Future<void> crateApiSimpleScanBallots({
@@ -388,7 +622,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 13,
             port: port_,
           );
         },
@@ -427,7 +661,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 14,
             port: port_,
           );
         },
@@ -464,7 +698,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 15,
             port: port_,
           );
         },
@@ -510,7 +744,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 16,
             port: port_,
           );
         },

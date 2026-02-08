@@ -7,6 +7,8 @@ import '../api.dart';
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `connect_to_vote_server`, `submit_ballot`
+
 String compileElectionDef({
   required String electionJson,
   required String seed,
@@ -43,6 +45,19 @@ Future<void> scanBallots({
   context: context,
 );
 
+Future<void> decodeBallots({
+  required String hash,
+  required String electionSeed,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleDecodeBallots(
+  hash: hash,
+  electionSeed: electionSeed,
+  context: context,
+);
+
+Future<void> collectResults({required Context context}) =>
+    RustLib.instance.api.crateApiSimpleCollectResults(context: context);
+
 Future<BigInt> getBalance({
   required String hash,
   required int idAccount,
@@ -68,5 +83,43 @@ Future<void> vote({
   idxQuestion: idxQuestion,
   voteContent: voteContent,
   amount: amount,
+  context: context,
+);
+
+Future<void> mint({
+  required String hash,
+  required int idAccount,
+  required int idxQuestion,
+  required BigInt amount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleMint(
+  hash: hash,
+  idAccount: idAccount,
+  idxQuestion: idxQuestion,
+  amount: amount,
+  context: context,
+);
+
+Future<void> delegate({
+  required String hash,
+  required int idAccount,
+  required int idxQuestion,
+  required String address,
+  required BigInt amount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleDelegate(
+  hash: hash,
+  idAccount: idAccount,
+  idxQuestion: idxQuestion,
+  address: address,
+  amount: amount,
+  context: context,
+);
+
+Future<String> getAccountAddress({
+  required int idAccount,
+  required Context context,
+}) => RustLib.instance.api.crateApiSimpleGetAccountAddress(
+  idAccount: idAccount,
   context: context,
 );
