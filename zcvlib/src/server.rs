@@ -13,12 +13,11 @@ use crate::{
 use anyhow::{Context, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
-use parking_lot::Mutex;
 use prost::Message;
 use serde_json::{Value, json};
 use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
@@ -27,12 +26,13 @@ use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::{
     abci::{
         ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
-        ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo, ResponsePrepareProposal,
-        ValidatorUpdate,
+        RequestProcessProposal, ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo,
+        ResponsePrepareProposal, ResponseProcessProposal, ValidatorUpdate,
+        response_process_proposal::ProposalStatus,
     },
     crypto::{PublicKey, public_key::Sum},
 };
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex};
 
 pub mod rpc;
 
@@ -58,6 +58,7 @@ pub struct ServerState {
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
     pub election_hash: Option<[u8; 32]>,
+    pub check_witnesses_cache: HashMap<[u8; 32], bool>,
 }
 
 impl ServerState {
@@ -74,6 +75,7 @@ impl ServerState {
             started,
             election: None,
             election_hash: None,
+            check_witnesses_cache: HashMap::new(),
         })
     }
 }
@@ -91,7 +93,7 @@ impl Application for Server {
         let rt = Runtime::new().unwrap();
         let data = rt.block_on(async move {
             let pool = {
-                let state = self.state.lock();
+                let state = self.state.lock().await;
                 state.pool.clone()
             };
             let mut conn = pool.acquire().await?;
@@ -107,18 +109,19 @@ impl Application for Server {
                     let hash = ballot.data.sighash()?;
                     // Fail on inter block double spend (but passes on intra block
                     // duplicate because it checks against the db)
-                    check_ballot(&mut conn, ballot).await?;
+                    let mut state = self.state.lock().await;
+                    state.check_ballot(&mut conn, ballot).await?;
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
-                    let state = self.state.lock();
+                    let state = self.state.lock().await;
                     if state.started {
                         anyhow::bail!("Validators cannot be added once the blockchain is started.");
                     }
                     v.pub_key
                 }
                 TypeOneof::Start(_) => {
-                    let state = self.state.lock();
+                    let state = self.state.lock().await;
                     if state.started {
                         anyhow::bail!("Blockchain already started.");
                     }
@@ -196,6 +199,36 @@ impl Application for Server {
         ResponsePrepareProposal { txs: proposed_txs }
     }
 
+    fn process_proposal(&self, request: RequestProcessProposal) -> ResponseProcessProposal {
+        let RequestProcessProposal { txs, height, .. } = request;
+        // Reject ill formed proposals
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let res = rt.block_on(async move {
+            let mut state = self.state.lock().await;
+            let mut conn = state.pool.acquire().await?;
+            // Check everything (do the same thing as finalize_block) but do not commit
+            let mut db_tx = conn.begin().await?;
+            for (itx, mut tx) in txs.into_iter().enumerate() {
+                let msg = VoteMessage::decode(&mut tx)?;
+                if let Some(TypeOneof::Ballot(ballot)) = msg.type_oneof {
+                    let ballot = from_protobuf(&ballot).anyhow()?;
+                    state.check_witnesses(&ballot)?;
+                    store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
+                }
+            }
+            db_tx.rollback().await?;
+            Ok::<_, anyhow::Error>(())
+        });
+        match res {
+            Ok(_) => ResponseProcessProposal {
+                status: ProposalStatus::Accept as i32,
+            },
+            Err(_) => ResponseProcessProposal {
+                status: ProposalStatus::Reject as i32,
+            },
+        }
+    }
+
     // Process the block that was voted on by the validators
     fn finalize_block(&self, request: RequestFinalizeBlock) -> ResponseFinalizeBlock {
         let RequestFinalizeBlock {
@@ -203,9 +236,9 @@ impl Application for Server {
         } = request;
         tracing::info!("Hash {} height {height}", hex::encode(&hash));
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let mut state = self.state.lock();
         let (tx_results, validator_updates) = rt
             .block_on(async move {
+                let mut state = self.state.lock().await;
                 let mut validator_updates = vec![];
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
@@ -242,6 +275,7 @@ impl Application for Server {
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let election_hash = state.election_hash.unwrap();
                                 let h = election.end + height as u32;
+                                state.check_witnesses(&ballot)?;
                                 // This will catch and fail on a double spend because of the UNIQUE dnf
                                 let id_ballot =
                                     store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
@@ -292,6 +326,7 @@ impl Application for Server {
                     .unwrap();
 
                 db_tx.commit().await?;
+                state.clear_check_witnesses();
                 Ok::<_, ZCVError>((tx_results, validator_updates))
             })
             .expect("Fatal Failure in FinalizeBlock");
@@ -313,18 +348,31 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
     Ok(exists)
 }
 
-pub async fn check_ballot(
-    conn: &mut SqliteConnection,
-    ballot: orchard::vote::Ballot,
-) -> ZCVResult<()> {
-    for a in ballot.data.actions {
-        let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
-        if exists {
-            tracing::info!("Duplicate tx inter block (skip from proposal)");
-            return Err(ZCVError::Duplicate);
-        }
+impl ServerState {
+    pub fn clear_check_witnesses(&mut self) {}
+
+    pub fn check_witnesses(&mut self, _ballot: &orchard::vote::Ballot) -> ZCVResult<()> {
+        // TODO
+        // This is an expensive operation, therefore we should consider
+        // caching the result
+        Ok(())
     }
-    Ok(())
+
+    pub async fn check_ballot(
+        &mut self,
+        conn: &mut SqliteConnection,
+        ballot: orchard::vote::Ballot,
+    ) -> ZCVResult<()> {
+        self.check_witnesses(&ballot)?;
+        for a in ballot.data.actions {
+            let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
+            if exists {
+                tracing::info!("Duplicate tx inter block (skip from proposal)");
+                return Err(ZCVError::Duplicate);
+            }
+        }
+        Ok(())
+    }
 }
 
 pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
