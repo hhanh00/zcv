@@ -759,7 +759,7 @@ fn wire__crate__api__simple__scan_ballots_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_hash = <String>::sse_decode(&mut deserializer);
-            let api_id_account = <u32>::sse_decode(&mut deserializer);
+            let api_id_accounts = <Vec<u32>>::sse_decode(&mut deserializer);
             let api_context = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Context>,
             >>::sse_decode(&mut deserializer);
@@ -788,7 +788,7 @@ fn wire__crate__api__simple__scan_ballots_impl(
                         let api_context_guard = api_context_guard.unwrap();
                         let output_ok = crate::api::simple::scan_ballots(
                             api_hash,
-                            api_id_account,
+                            api_id_accounts,
                             &*api_context_guard,
                         )
                         .await?;
@@ -1039,6 +1039,18 @@ impl SseDecode for String {
     }
 }
 
+impl SseDecode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<u32>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1192,6 +1204,16 @@ impl SseEncode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
+
+impl SseEncode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u32>::sse_encode(item, serializer);
+        }
     }
 }
 
