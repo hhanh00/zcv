@@ -48,7 +48,7 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
 }
 
 #[frb]
-pub async fn scan_ballots(hash: String, id_account: u32, context: &Context) -> Result<()> {
+pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let hash = hex::decode(&hash)?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
@@ -63,7 +63,7 @@ pub async fn scan_ballots(hash: String, id_account: u32, context: &Context) -> R
         &mut conn,
         &mut client,
         &hash,
-        id_account,
+        &id_accounts,
         start,
         end,
     )

@@ -499,6 +499,7 @@ pub async fn store_spend(
 
 pub async fn store_ballot_spend(
     conn: &mut SqliteConnection,
+    id_account: u32,
     id_question: u32,
     dnf: &[u8],
     height: u32,
@@ -506,8 +507,9 @@ pub async fn store_ballot_spend(
     query(
         "INSERT INTO spends
         (id_note, height, value)
-        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND dnf = ?2",
+        SELECT id_note, ?3, -value FROM notes WHERE account = ?1 AND question = ?2 AND dnf = ?3",
     )
+    .bind(id_account)
     .bind(id_question)
     .bind(dnf)
     .bind(height)

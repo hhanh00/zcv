@@ -37,11 +37,11 @@ Future<void> scanNotes({
 
 Future<void> scanBallots({
   required String hash,
-  required int idAccount,
+  required List<int> idAccounts,
   required Context context,
 }) => RustLib.instance.api.crateApiSimpleScanBallots(
   hash: hash,
-  idAccount: idAccount,
+  idAccounts: idAccounts,
   context: context,
 );
 

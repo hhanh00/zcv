@@ -1,14 +1,25 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ZCVResult, db::{derive_spending_key, get_domains, get_ivks, list_unspent_nullifiers, store_ballot_spend, store_election_height_position, store_received_note, store_result, store_spend}, error::IntoAnyhow, rpc::{
+    ZCVResult,
+    db::{
+        derive_spending_key, get_domains, get_ivks, list_unspent_nullifiers, store_ballot_spend,
+        store_election_height_position, store_received_note, store_result, store_spend,
+    },
+    error::IntoAnyhow,
+    rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
-    }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
+    },
+    tiu,
+    vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
 use ff::PrimeField;
 use orchard::{
-    keys::{Scope, FullViewingKey, PreparedIncomingViewingKey}, note::{ExtractedNoteCommitment, Nullifier}, note_encryption::{CompactAction, OrchardDomain}, vote::try_decrypt_ballot
+    keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
+    note::{ExtractedNoteCommitment, Nullifier},
+    note_encryption::{CompactAction, OrchardDomain},
+    vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
 use sqlx::{Acquire, SqliteConnection, query};
@@ -123,8 +134,10 @@ pub async fn scan_blocks(
             }
         }
     }
-    query("UPDATE elections SET height = ?1, position = ?2
-    WHERE hash = ?3")
+    query(
+        "UPDATE elections SET height = ?1, position = ?2
+    WHERE hash = ?3",
+    )
     .bind(end)
     .bind(position)
     .bind(hash)
@@ -139,7 +152,7 @@ pub async fn scan_ballots(
     conn: &mut SqliteConnection,
     client: &mut VoteClient,
     hash: &[u8],
-    id_account: u32,
+    id_accounts: &[u32],
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
@@ -147,16 +160,19 @@ pub async fn scan_ballots(
     tracing::info!("scan_ballots [{start},{end}]");
     crate::db::delete_range(&mut db_tx, start, end).await?;
     let domains = get_domains(&mut db_tx, hash).await?;
-    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
-    let ivks = [
-        (0, PreparedIncomingViewingKey::new(&eivk)),
-        (1, PreparedIncomingViewingKey::new(&iivk)),
-    ];
+    let mut ivks = vec![];
+    for id_account in id_accounts {
+        let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
+        ivks.push((*id_account, fvk.clone(), 0, PreparedIncomingViewingKey::new(&eivk)));
+        ivks.push((*id_account, fvk.clone(), 1, PreparedIncomingViewingKey::new(&iivk)));
+    }
 
-    let mut nfs: HashSet<[u8; 32]> = HashSet::new();
-    for dnf in list_unspent_nullifiers(&mut db_tx, id_account).await? {
-        tracing::info!("dnf: {}", hex::encode(&dnf));
-        nfs.insert(tiu!(dnf));
+    let mut nfs: HashMap<[u8; 32], u32> = HashMap::new();
+    for id_account in id_accounts {
+        for dnf in list_unspent_nullifiers(&mut db_tx, *id_account).await? {
+            tracing::info!("dnf: {}", hex::encode(&dnf));
+            nfs.insert(tiu!(dnf), *id_account);
+        }
     }
 
     let mut ballots = client
@@ -175,24 +191,23 @@ pub async fn scan_ballots(
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
-        let id_question = domains.iter().find(|&d| d.2 == domain)
-            .unwrap().0;
+        let id_question = domains.iter().find(|&d| d.2 == domain).unwrap().0;
         for a in data.actions.iter() {
             tracing::info!("-nf: {}", hex::encode(a.nf));
-            if nfs.contains(&a.nf) {
+            if let Some(id_account) = nfs.get(&a.nf) {
                 tracing::info!("Spend for {id_question}");
-                store_ballot_spend(&mut db_tx, id_question, &a.nf, height).await?;
+                store_ballot_spend(&mut db_tx, *id_account, id_question, &a.nf, height).await?;
             }
 
-            for (scope, pivk) in ivks.iter() {
+            for (id_account, fvk, scope, pivk) in ivks.iter() {
                 if let Some((note, memo)) = try_decrypt_ballot(pivk, a.clone())? {
                     info!("Found note at {} for {} zats", height, note.value().inner());
 
                     store_received_note(
                         &mut db_tx,
                         domain,
-                        id_account,
-                        &fvk,
+                        *id_account,
+                        fvk,
                         &note,
                         &memo, // memos are not used prior to voting
                         height,
@@ -203,8 +218,8 @@ pub async fn scan_ballots(
                     .await?;
 
                     // track new note nullifier
-                    let nf = note.nullifier_domain(&fvk, domain).to_bytes();
-                    nfs.insert(nf);
+                    let nf = note.nullifier_domain(fvk, domain).to_bytes();
+                    nfs.insert(nf, *id_account);
                 }
             }
 
@@ -251,19 +266,19 @@ pub async fn decode_ballots(
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
-        let (_, idx_question, _) = domains.iter().find(|&d| d.2 == domain)
-            .unwrap();
+        let (_, idx_question, _) = domains.iter().find(|&d| d.2 == domain).unwrap();
         for a in data.actions.iter() {
             for pivk in vks.iter() {
                 if let Some((note, memo)) = try_decrypt_ballot(pivk, a.clone())? {
-                    info!("Found note at {} for {} zats to question {} with answer {}", height, note.value().inner(), *idx_question,
-                    hex::encode(&memo[..64]));
-
-                    store_result(&mut db_tx,
+                    info!(
+                        "Found note at {} for {} zats to question {} with answer {}",
+                        height,
+                        note.value().inner(),
                         *idx_question,
-                        &memo,
-                        note.value().inner()
-                    ).await?;
+                        hex::encode(&memo[..64])
+                    );
+
+                    store_result(&mut db_tx, *idx_question, &memo, note.value().inner()).await?;
                 }
             }
         }

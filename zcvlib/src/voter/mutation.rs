@@ -34,10 +34,10 @@ impl Mutation {
 
     async fn scan_ballots(
         hash: String,
-        id_account: i32,
+        id_account: Vec<i32>,
         context: &GQLContext,
     ) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(hash, id_account as u32, &context.0).await?;
+        zcvlib::api::simple::scan_ballots(hash, id_account.into_iter().map(|a| a as u32).collect(), &context.0).await?;
         Ok(true)
     }
 
