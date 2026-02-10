@@ -7,7 +7,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
-// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `connect`, `new`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `connect`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Context>>
 abstract class Context implements RustOpaqueInterface {
@@ -18,4 +18,15 @@ abstract class Context implements RustOpaqueInterface {
   set electionUrl(String electionUrl);
 
   set lwdUrl(String lwdUrl);
+
+  // HINT: Make it `#[frb(sync)]` to let it become the default constructor of Dart class.
+  static Future<Context> newInstance({
+    required String dbPath,
+    required String lwdUrl,
+    required String electionUrl,
+  }) => RustLib.instance.api.crateApiContextNew(
+    dbPath: dbPath,
+    lwdUrl: lwdUrl,
+    electionUrl: electionUrl,
+  );
 }

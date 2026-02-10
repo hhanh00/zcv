@@ -20,7 +20,6 @@ pub struct Context {
 }
 
 impl Context {
-    #[frb(ignore)]
     pub async fn new(db_path: &str, lwd_url: &str, election_url: &str) -> Result<Context> {
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
