@@ -202,11 +202,11 @@ pub async fn store_election(
             VALUES (?, '', ?, ?, ?, 0, ?, ?, ?) ON CONFLICT DO UPDATE SET
             start = excluded.start,
             end = excluded.end,
-            height = excluded.height,
             need_sig = excluded.need_sig,
             name = excluded.name,
             data = excluded.data
             RETURNING id_election",
+            // Do not reset the height
     )
     .bind(hash.as_slice())
     .bind(election.start)
