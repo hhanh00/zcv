@@ -41,7 +41,7 @@ mutation vote ($hash: String!) {
 
 mutation scan($hash: String!) {
   scanBallots(hash: $hash
-  idAccount: 2
+  idAccounts: [2]
   )
 }
 
