@@ -1,0 +1,32 @@
+name: End to End CI
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+    - main
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  test-e2e:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: lts
+      - name: Build and Run tests
+        run: |
+          cargo build -r
+          cometbft init --home node
+          cometbft start --home node >/dev/null &
+          ./target/release/vote-cometbft  >/dev/null &
+          sleep 10
+          ./tests/submit_election.sh
+          ./target/release/voter --election-url "http://localhost:9010" &
+          sleep 1
+          deno run --allow-env --allow-net tests/scale/src/index.ts
