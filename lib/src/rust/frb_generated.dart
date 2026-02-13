@@ -11,6 +11,7 @@ import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'vote.dart';
 
 /// Main entrypoint of the Rust API
 class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
@@ -98,7 +99,9 @@ abstract class RustLibApi extends BaseApi {
     required String electionUrl,
   });
 
-  Future<void> crateApiSimpleCollectResults({required Context context});
+  Future<List<VoteResultItem>> crateApiSimpleCollectResults({
+    required Context context,
+  });
 
   String crateApiSimpleCompileElectionDef({
     required String electionJson,
@@ -345,7 +348,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Future<void> crateApiSimpleCollectResults({required Context context}) {
+  Future<List<VoteResultItem>> crateApiSimpleCollectResults({
+    required Context context,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -362,7 +367,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
+          decodeSuccessData: sse_decode_list_vote_result_item,
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSimpleCollectResultsConstMeta,
@@ -889,6 +894,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<VoteResultItem> dco_decode_list_vote_result_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_vote_result_item).toList();
+  }
+
+  @protected
   int dco_decode_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -916,6 +927,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt dco_decode_usize(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeU64(raw);
+  }
+
+  @protected
+  VoteResultItem dco_decode_vote_result_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return VoteResultItem(
+      idxQuestion: dco_decode_u_32(arr[0]),
+      idxSubQuestion: dco_decode_u_32(arr[1]),
+      idxAnswer: dco_decode_u_8(arr[2]),
+      votes: dco_decode_u_64(arr[3]),
+    );
   }
 
   @protected
@@ -1002,6 +1027,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<VoteResultItem> sse_decode_list_vote_result_item(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <VoteResultItem>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_vote_result_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
@@ -1028,6 +1067,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt sse_decode_usize(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  VoteResultItem sse_decode_vote_result_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_idxQuestion = sse_decode_u_32(deserializer);
+    var var_idxSubQuestion = sse_decode_u_32(deserializer);
+    var var_idxAnswer = sse_decode_u_8(deserializer);
+    var var_votes = sse_decode_u_64(deserializer);
+    return VoteResultItem(
+      idxQuestion: var_idxQuestion,
+      idxSubQuestion: var_idxSubQuestion,
+      idxAnswer: var_idxAnswer,
+      votes: var_votes,
+    );
   }
 
   @protected
@@ -1142,6 +1196,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_vote_result_item(
+    List<VoteResultItem> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_vote_result_item(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint32(self);
@@ -1168,6 +1234,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_usize(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
+  void sse_encode_vote_result_item(
+    VoteResultItem self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.idxQuestion, serializer);
+    sse_encode_u_32(self.idxSubQuestion, serializer);
+    sse_encode_u_8(self.idxAnswer, serializer);
+    sse_encode_u_64(self.votes, serializer);
   }
 
   @protected

@@ -5,6 +5,7 @@
 
 import '../api.dart';
 import '../frb_generated.dart';
+import '../vote.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `connect_to_vote_server`, `submit_ballot`
@@ -55,7 +56,7 @@ Future<void> decodeBallots({
   context: context,
 );
 
-Future<void> collectResults({required Context context}) =>
+Future<List<VoteResultItem>> collectResults({required Context context}) =>
     RustLib.instance.api.crateApiSimpleCollectResults(context: context);
 
 Future<BigInt> getBalance({

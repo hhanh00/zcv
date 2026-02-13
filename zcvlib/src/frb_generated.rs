@@ -1063,6 +1063,18 @@ impl SseDecode for Vec<u8> {
     }
 }
 
+impl SseDecode for Vec<crate::vote::VoteResultItem> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::vote::VoteResultItem>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1093,6 +1105,22 @@ impl SseDecode for usize {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u64::<NativeEndian>().unwrap() as _
+    }
+}
+
+impl SseDecode for crate::vote::VoteResultItem {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_idxQuestion = <u32>::sse_decode(deserializer);
+        let mut var_idxSubQuestion = <u32>::sse_decode(deserializer);
+        let mut var_idxAnswer = <u8>::sse_decode(deserializer);
+        let mut var_votes = <u64>::sse_decode(deserializer);
+        return crate::vote::VoteResultItem {
+            idx_question: var_idxQuestion,
+            idx_sub_question: var_idxSubQuestion,
+            idx_answer: var_idxAnswer,
+            votes: var_votes,
+        };
     }
 }
 
@@ -1177,6 +1205,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<Context>> for Context {
     }
 }
 
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::vote::VoteResultItem {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.idx_question.into_into_dart().into_dart(),
+            self.idx_sub_question.into_into_dart().into_dart(),
+            self.idx_answer.into_into_dart().into_dart(),
+            self.votes.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::vote::VoteResultItem {}
+impl flutter_rust_bridge::IntoIntoDart<crate::vote::VoteResultItem>
+    for crate::vote::VoteResultItem
+{
+    fn into_into_dart(self) -> crate::vote::VoteResultItem {
+        self
+    }
+}
+
 impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1227,6 +1276,16 @@ impl SseEncode for Vec<u8> {
     }
 }
 
+impl SseEncode for Vec<crate::vote::VoteResultItem> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::vote::VoteResultItem>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1260,6 +1319,16 @@ impl SseEncode for usize {
             .cursor
             .write_u64::<NativeEndian>(self as _)
             .unwrap();
+    }
+}
+
+impl SseEncode for crate::vote::VoteResultItem {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.idx_question, serializer);
+        <u32>::sse_encode(self.idx_sub_question, serializer);
+        <u8>::sse_encode(self.idx_answer, serializer);
+        <u64>::sse_encode(self.votes, serializer);
     }
 }
 

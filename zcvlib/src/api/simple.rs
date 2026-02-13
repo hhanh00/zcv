@@ -9,6 +9,7 @@ use crate::api::Context;
 use crate::db::{get_domain, get_election, get_election_height};
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
+use crate::vote::VoteResultItem;
 use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
@@ -96,10 +97,10 @@ pub async fn decode_ballots(hash: String, election_seed: String, context: &Conte
     Ok(())
 }
 
-pub async fn collect_results(context: &Context) -> Result<()> {
+pub async fn collect_results(context: &Context) -> Result<Vec<VoteResultItem>> {
     let mut conn = context.connect().await?;
-    crate::vote::collect_results(&mut conn).await?;
-    Ok(())
+    let res = crate::vote::collect_results(&mut conn).await?;
+    Ok(res)
 }
 
 #[frb]

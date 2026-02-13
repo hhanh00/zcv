@@ -1,6 +1,8 @@
 import { GraphQLClient, gql } from "graphql-request";
 import * as bip39 from "bip39";
+import assert from "node:assert/strict";
 
+const client = new GraphQLClient("http://localhost:8000/graphql", {});
 const storeElection = gql`
   mutation storeElection($election: String!) {
     storeElection(electionJson: $election)
@@ -40,16 +42,13 @@ const election = {
     },
   ],
 };
-const vars = {
+const rep = await client.request(storeElection, {
   election: JSON.stringify(election),
-};
-const client = new GraphQLClient("http://localhost:8000/graphql", {});
-const rep = await client.request(storeElection, vars);
-console.log(rep);
+});
 const hash = rep.storeElection;
 
-var accounts = [];
-for (var i = 0; i < 50; i++) {
+const nVoters = 50;
+for (var i = 1; i <= nVoters; i++) {
   const seed = bip39.generateMnemonic(256);
   const storeSeed = gql`
     mutation seed($seed: String!, $account: Int!) {
@@ -58,7 +57,7 @@ for (var i = 0; i < 50; i++) {
   `;
   await client.request(storeSeed, {
     seed,
-    account: i + 1,
+    account: i,
   });
 
   const mint = gql`
@@ -68,9 +67,8 @@ for (var i = 0; i < 50; i++) {
   `;
   await client.request(mint, {
     hash,
-    account: i + 1,
+    account: i,
   });
-  accounts.push(i + 1);
 }
 
 const sleep = (ms: number) => {
@@ -85,7 +83,7 @@ const scan = gql`
 `;
 await client.request(scan, {
   hash,
-  accounts,
+  accounts: Array.from({ length: nVoters }, (_, i) => i + 1),
 });
 
 const vote = gql`
@@ -106,8 +104,17 @@ const vote = gql`
   }
 `;
 
-for (var i = 1; i <= 50; i++) {
-  const answerBytes = [i, i + 1, i + 2];
+const scores: Record<number, Record<number, number>> = {};
+for (var i = 1; i <= nVoters; i++) {
+  const value = Math.trunc(Math.random() * 100);
+  const answerBytes = [];
+  for (var j = 0; j < 3; j++) {
+    const choice = Math.trunc(Math.random() * 2);
+    const v = scores[j] || {};
+    v[choice] = value + (v[choice] || 0);
+    scores[j] = v;
+    answerBytes.push(choice + 1);
+  }
 
   const answer = answerBytes
     .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
@@ -115,7 +122,7 @@ for (var i = 1; i <= 50; i++) {
 
   const vars = {
     account: i,
-    amount: i * 10,
+    amount: value,
     hash,
     question: 1,
     answer,
@@ -124,19 +131,38 @@ for (var i = 1; i <= 50; i++) {
 }
 
 await sleep(5000);
-await client.request(gql`
-  mutation ($hash: String!) {
-    decodeBallots(
-      electionSeed: "stool rich together paddle together pool raccoon promote attitude peasant latin concert"
-      hash: $hash
-    )
-    collectResults
-  }
-`, { hash });
+await client.request(
+  gql`
+    mutation ($hash: String!) {
+      decodeBallots(
+        electionSeed: "stool rich together paddle together pool raccoon promote attitude peasant latin concert"
+        hash: $hash
+      )
+    }
+  `,
+  { hash },
+);
 
 await sleep(1000);
-await client.request(gql`
-  mutation  {
-    collectResults
-  }
-`, { hash });
+const res = await client.request(
+  gql`
+    mutation {
+      collectResults {
+        idxQuestion
+        idxSubQuestion
+        idxAnswer
+        votes
+      }
+    }
+  `,
+  { hash },
+);
+console.log(res.collectResults);
+console.log(scores);
+
+for (var r of res.collectResults) {
+  const { idxQuestion, idxSubQuestion, idxAnswer, votes } = r;
+  assert.equal(idxQuestion, 1);
+  const s = scores[idxSubQuestion][idxAnswer - 1];
+  assert.equal(s, parseInt(votes));
+}

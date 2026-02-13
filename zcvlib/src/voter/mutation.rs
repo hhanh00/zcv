@@ -1,8 +1,8 @@
-use bigdecimal::{BigDecimal, ToPrimitive};
-use juniper::{FieldResult, graphql_object};
-use zcvlib::{db::set_account_seed, error::IntoAnyhow};
+use bigdecimal::BigDecimal;
+use juniper::{FieldResult, GraphQLObject, graphql_object};
+use zcvlib::db::set_account_seed;
 
-use crate::voter::GQLContext;
+use crate::voter::{GQLContext, from_zats, to_zats};
 
 pub struct Mutation {}
 
@@ -37,7 +37,12 @@ impl Mutation {
         id_accounts: Vec<i32>,
         context: &GQLContext,
     ) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(hash, id_accounts.into_iter().map(|a| a as u32).collect(), &context.0).await?;
+        zcvlib::api::simple::scan_ballots(
+            hash,
+            id_accounts.into_iter().map(|a| a as u32).collect(),
+            &context.0,
+        )
+        .await?;
         Ok(true)
     }
 
@@ -50,9 +55,18 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn collect_results(context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::collect_results(&context.0).await?;
-        Ok(true)
+    async fn collect_results(context: &GQLContext) -> FieldResult<Vec<VoteResultItem>> {
+        let res = zcvlib::api::simple::collect_results(&context.0).await?;
+        let res: Vec<_> = res
+            .into_iter()
+            .map(|v| VoteResultItem {
+                idx_question: v.idx_question as i32,
+                idx_sub_question: v.idx_sub_question as i32,
+                idx_answer: v.idx_answer as i32,
+                votes: from_zats(v.votes),
+            })
+            .collect();
+        Ok(res)
     }
 
     async fn vote(
@@ -110,24 +124,12 @@ impl Mutation {
         .await?;
         Ok(true)
     }
-
-    // pub async fn tally_election(
-    //     hash: String,
-    //     election_seed: String,
-    //     ctx: &GQLContext,
-    // ) -> FieldResult<bool> {
-    //     zcvlib::api::simple::tally_election(hash, election_seed, &ctx.0).await?;
-    //     Ok(true)
-    // }
 }
 
-fn to_zats(v: BigDecimal) -> anyhow::Result<u64> {
-    let zats = v
-        .with_scale(8)
-        .as_bigint_and_exponent()
-        .0
-        .to_u64()
-        .ok_or(anyhow::anyhow!("Invalid amount"))
-        .anyhow()?;
-    Ok(zats)
+#[derive(GraphQLObject)]
+pub struct VoteResultItem {
+    pub idx_question: i32,
+    pub idx_sub_question: i32,
+    pub idx_answer: i32,
+    pub votes: BigDecimal,
 }
