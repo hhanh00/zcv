@@ -19,6 +19,13 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: lts
+      - name: Install dependencies
+        run: |
+          curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz -o grpcurl.tar.gz
+          tar -xzf grpcurl.tar.gz
+          sudo mv grpcurl /usr/local/bin/
+          go install github.com/cometbft/cometbft/cmd/cometbft@v0.38
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Build and Run tests
         run: |
           cargo build -r
@@ -29,4 +36,5 @@ jobs:
           ./tests/submit_election.sh
           ./target/release/voter --election-url "http://localhost:9010" &
           sleep 1
+          (cd tests/scale;deno install)
           deno run --allow-env --allow-net tests/scale/src/index.ts
