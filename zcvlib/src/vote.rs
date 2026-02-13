@@ -5,7 +5,11 @@ use rand_core::OsRng;
 use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 use zcash_protocol::consensus::Network;
 
-use crate::{ZCVResult, ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends}, db::{get_account_address, get_domain}};
+use crate::{
+    ZCVResult,
+    ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends},
+    db::{get_account_address, get_domain},
+};
 
 pub async fn vote(
     network: &Network,
@@ -42,8 +46,16 @@ pub async fn mint(
     let address = get_account_address(network, conn, id_account).await?;
 
     let data = encrypt_ballot_data_with_spends(
-        network, conn, domain, id_account, &address, &[], amount, vec![],
-        amount, OsRng,
+        network,
+        conn,
+        domain,
+        id_account,
+        &address,
+        &[],
+        amount,
+        vec![],
+        amount,
+        OsRng,
     )
     .await?;
     Ok(Ballot {
@@ -65,7 +77,13 @@ pub async fn delegate(
     let (domain, _) = get_domain(conn, hash, idx_question).await?;
 
     let data = encrypt_ballot_data(
-        network, conn, domain, id_account, address, &[], amount,
+        network,
+        conn,
+        domain,
+        id_account,
+        address,
+        &[],
+        amount,
         OsRng,
     )
     .await?;
@@ -83,33 +101,41 @@ fn dummy_witnesses() -> BallotWitnesses {
     }
 }
 
-pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<()> {
+pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteResultItem>> {
+    query("DELETE FROM final_results")
+        .execute(&mut *conn)
+        .await?;
     let results = query("SELECT question, answer, votes FROM results")
-    .map(|r: SqliteRow| {
-        let idx_question: u32 = r.get(0);
-        let answer: Vec<u8> = r.get(1);
-        let votes: u64 = r.get(2);
-        (idx_question, answer, votes)
-    })
-    .fetch_all(&mut *conn)
-    .await?;
-    let mut items: HashMap<Item, u64> = HashMap::new();
+        .map(|r: SqliteRow| {
+            let idx_question: u32 = r.get(0);
+            let answer: Vec<u8> = r.get(1);
+            let votes: u64 = r.get(2);
+            (idx_question, answer, votes)
+        })
+        .fetch_all(&mut *conn)
+        .await?;
+    let mut items: HashMap<VoteResultItem, u64> = HashMap::new();
     for (idx_question, answer, votes) in results {
         for (i, a) in answer.iter().enumerate() {
-            if *a == 0 { break; }
-            let item = Item {
+            if *a == 0 {
+                break;
+            }
+            let item = VoteResultItem {
                 idx_question,
                 idx_sub_question: i as u32,
                 idx_answer: *a,
+                votes: 0,
             };
             let e = items.entry(item).or_default();
             *e += votes;
         }
     }
     for (k, v) in items {
-        query("INSERT INTO final_results
+        query(
+            "INSERT INTO final_results
         (idx_question, idx_sub_question, idx_answer, votes)
-        VALUES (?1, ?2, ?3, ?4)")
+        VALUES (?1, ?2, ?3, ?4)",
+        )
         .bind(k.idx_question)
         .bind(k.idx_sub_question)
         .bind(k.idx_answer)
@@ -117,12 +143,29 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<()> {
         .execute(&mut *conn)
         .await?;
     }
-    Ok(())
+    let counts = query("SELECT idx_question, idx_sub_question, idx_answer, votes
+    FROM final_results ORDER BY idx_question, idx_sub_question, idx_answer")
+    .map(|r: SqliteRow| {
+        let idx_question: u32 = r.get(0);
+        let idx_sub_question: u32 = r.get(1);
+        let idx_answer: u8 = r.get(2);
+        let votes: u64 = r.get(3);
+        VoteResultItem {
+            idx_question,
+            idx_sub_question,
+            idx_answer,
+            votes,
+        }
+    })
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(counts)
 }
 
 #[derive(Hash, PartialEq, Eq)]
-struct Item {
-    idx_question: u32,
-    idx_sub_question: u32,
-    idx_answer: u8,
+pub struct VoteResultItem {
+    pub idx_question: u32,
+    pub idx_sub_question: u32,
+    pub idx_answer: u8,
+    pub votes: u64,
 }
