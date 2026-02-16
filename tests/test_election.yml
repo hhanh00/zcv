@@ -1,0 +1,24 @@
+---
+start: 3155000
+end: 3169000
+need_sig: true
+name: Test Election
+questions:
+- title: Q1. What is your favorite color?
+  choices:
+  - answers:
+    - Red
+    - Green
+    - Blue
+- title: Q2. Is the earth flat?
+  subtitle: ''
+  choices:
+  - answers:
+    - 'Yes'
+    - 'No'
+- title: Q3. Do you like pizza?
+  subtitle: ''
+  choices:
+  - answers:
+    - 'Yes'
+    - 'No'

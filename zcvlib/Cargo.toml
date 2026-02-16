@@ -16,6 +16,10 @@ path = "src/cometapp.rs"
 name = "voter"
 path = "src/voter-cli.rs"
 
+[[bin]]
+name = "creator"
+path = "src/creator-cli.rs"
+
 [dependencies]
 flutter_rust_bridge = "=2.11.1"
 
