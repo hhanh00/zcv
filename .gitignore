@@ -12,6 +12,9 @@ orchard/
 /build/
 .idea/
 *.iml
+node_modules/
+docs/.vuepress/.cache
+docs/.vuepress/.temp
 
 *.code-workspace
 *.db
