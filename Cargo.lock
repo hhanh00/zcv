@@ -4782,7 +4782,7 @@ dependencies = [
 
 [[package]]
 name = "zcv-setup"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "zcvlib"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base64",
