@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="VuePress 2.0.0-rc.26" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+      }
+
+      [data-theme='dark'] {
+        --vp-c-bg: #1b1b1f;
+      }
+
+      html,
+      body {
+        background-color: var(--vp-c-bg);
+      }
+    </style>
+    <script>
+      const useChoice = localStorage.getItem('vuepress-color-scheme')
+      const systemStatus =
+        'matchMedia' in window
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : false
+
+      if (useChoice === 'light') {
+        document.documentElement.dataset.theme = 'light'
+      } else if (useChoice === 'dark' || systemStatus) {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
+    <title>ZCV Documentation</title><meta name="description" content="">
+    <link rel="preload" href="/zcv/assets/style-DaWg1dPo.css" as="style"><link rel="stylesheet" href="/zcv/assets/style-DaWg1dPo.css">
+    <link rel="modulepreload" href="/zcv/assets/app-GAvX8m96.js"><link rel="modulepreload" href="/zcv/assets/404.html-RfO_rIhU.js">
+    <link rel="prefetch" href="/zcv/assets/index.html-B-sWk0I9.js" as="script"><link rel="prefetch" href="/zcv/assets/authority.html-Bv-1WIt_.js" as="script"><link rel="prefetch" href="/zcv/assets/creator.html-D5aCuU3v.js" as="script"><link rel="prefetch" href="/zcv/assets/format.html-COuRdaEU.js" as="script"><link rel="prefetch" href="/zcv/assets/overview.html-_V_ruB72.js" as="script"><link rel="prefetch" href="/zcv/assets/results.html-DJbuEBUt.js" as="script"><link rel="prefetch" href="/zcv/assets/voter.html-BeAbby6v.js" as="script"><link rel="prefetch" href="/zcv/assets/mermaid.esm.min-5SWvLmNQ.js" as="script">
+  </head>
+  <body>
+    <div id="app"><!--[--><div class="vp-theme-container" vp-container data-v-d716facb><main class="page" data-v-d716facb><div vp-content data-v-d716facb><h1 data-v-d716facb>404</h1><blockquote data-v-d716facb>There&#39;s nothing here.</blockquote><a class="route-link" href="/zcv/" data-v-d716facb>Take me home</a></div></main></div><!--[--><!----><!--]--><!--]--></div>
+    <script type="module" src="/zcv/assets/app-GAvX8m96.js" defer></script>
+  </body>
+</html>
