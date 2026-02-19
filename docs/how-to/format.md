@@ -1,3 +1,123 @@
 ---
 title: Election Format
 ---
+## Election Parameters
+- Name: Name of the election
+- Start height: The height at which funds must be put in the Orchard Pool. Funds that were added **before** the start height **are not usable**.
+- End height: The height at which we take a **snapshot** of the Orchard pool. Funds that are added **after** the end height **are not usable**.
+- The range of blocks between Start and End form the registration window. Any transaction outside of this window does not impact this election.
+- Need Signature Flag: true/false. If the election selects this option,
+ballots must be signed with the spending key. Otherwise, voters can submit ballots using their viewing key.
+### Questions
+One or more questions that this election polls. Questions are independent of each other and ballots are associated with a single question at a time. The initial voting power is determined by the amount of ZEC in the registration window, and is given to *each* question. But, the voting power is not transferrable between questions.
+
+A question has the following parts:
+- A title: It describes the overwall purpose of the question
+- A series of choices. This is the sub questions
+- Each choice has multiple options. The default option for the Voting UI should be the first one.
+
+::: info
+A ballot answers one question, but a question can have multiple parts.
+See the example section for typical election formats.
+:::
+
+> The terminology "question", "choice", "answer" is rather confusing.
+What would be a better way to describe them?
+
+## Example
+
+### ZCG Election
+```yaml
+name: ZCG Election 2025 Q4
+start: 2978050
+end: 3218812
+need_sig: true
+questions:
+  - title: "Do you support the following candidates ?"
+    choices:
+    - title: "Dennis Klein"
+      answers:
+      - No
+      - Yes
+    - title: "Rafe Rosales"
+      answers:
+      - No
+      - Yes
+    - title: "Freyja Howe"
+      answers:
+      - No
+      - Yes
+    - title: "Roisin Shepherd"
+      answers:
+      - No
+      - Yes
+    - title: "Zaynab Rojas"
+      answers:
+      - No
+      - Yes
+```
+
+### NU 7 Sentiment Poll
+```yaml
+name: NU7 Sentiment Poll
+start: 2978050
+end: 3218812
+need_sig: true
+questions:
+  - title: "What is your general sentiment toward including the following protocol features?"
+    choices:
+    - title: "Zcash Shielded Assets (ZSAs)"
+      answers:
+      - Support
+      - Oppose
+    - title: Network Sustainability Mechanism (NSM)
+      subtitle: including smoothing the issuance curve, which allows ZEC to be removed from circulation and later reissued as future block rewards to help sustain network security while preserving the 21 million ZEC supply cap
+      answers:
+      - Support
+      - Oppose
+    - title: Burning 60% of transaction fees via the NSM
+      subtitle: The goals are to demonstrate Zcash’s commitment to long-term sustainability, to burn ZEC so that it can be re-issued in the future without exceeding the 21M supply cap, and in the context of dynamic fees, to prevent miners from manipulating fees
+      answers:
+      - Support
+      - Oppose
+    - title: Memo Bundles
+      subtitle: which let transactions include memos larger than 512 bytes and share a memo across multiple recipients, and also permits inclusion of authenticated reply-to addresses
+      answers:
+      - Support
+      - Oppose
+    - title: Explicit Fees
+      subtitle: allowing transaction fees to be clearly specified and committed to in the transaction
+      answers:
+      - Support
+      - Oppose
+    - title: Disallowing v4 transactions
+      subtitle: reducing the complexity and attack surface of the Zcash protocol and would disable the ability to spend Sprout funds
+      answers:
+      - Support
+      - Oppose
+    - title: Project Tachyon
+      subtitle: a new shielded protocol or pool to address scalability challenges
+      answers:
+      - Support
+      - Oppose
+    - title: STARK proof verification
+      subtitle: via Transparent Zcash Extensions (TZEs) to enable Layer-2 designs on Zcash
+      answers:
+      - Support
+      - Oppose
+    - title: Dynamic fee mechanism
+      subtitle: a comparable-based, dynamic fees
+      answers:
+      - Support
+      - Oppose
+    - title: Consensus accounts
+      subtitle: which generalize the functionality of the dev fund lockbox and reduce the operational expense of collecting ZCG funds and miner rewards
+      answers:
+      - Support
+      - Oppose
+    - title: Orchard quantum recoverability
+      subtitle: which aims to ensure that if the security of elliptic curve-based cryptography came into doubt (due to the emergence of a cryptographically relevant quantum computer or otherwise), then new Orchard funds could remain recoverable by a later protocol — as opposed to having to be burnt in order to avoid an unbounded balance violation
+      answers:
+      - Support
+      - Oppose
+```
