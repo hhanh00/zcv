@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/hhanh00/zcv/compare/zcv-setup-v0.1.0...zcv-setup-v0.1.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* dockerfile build ([#95](https://github.com/hhanh00/zcv/issues/95)) ([b42b054](https://github.com/hhanh00/zcv/commit/b42b0543eff681f529b97b9126dd9ad7fd887f74))
+
+
+### Chores
+
+* add docker builder file ([#93](https://github.com/hhanh00/zcv/issues/93)) ([7d23ee1](https://github.com/hhanh00/zcv/commit/7d23ee1b7ac4760479b48f3d1e5a9dc6ba51ecb4))
+
 ## 0.1.0 (2026-01-24)
 
 
