@@ -10,7 +10,7 @@ pub mod ballot;
 pub mod vote;
 pub mod server;
 pub mod api;
-pub mod frb_generated;
+// pub mod frb_generated;
 
 #[path = "cash.z.wallet.sdk.rpc.rs"]
 pub mod rpc;

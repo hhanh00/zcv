@@ -1,11 +1,10 @@
 use anyhow::Result;
-use flutter_rust_bridge::frb;
 use orchard::vote::Ballot;
 use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
 
-use crate::api::Context;
+use crate::context::Context;
 use crate::db::{get_domain, get_election, get_election_height};
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
@@ -13,7 +12,6 @@ use crate::vote::VoteResultItem;
 use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
 
-#[frb(sync)]
 pub fn compile_election_def(election_json: String, seed: String) -> Result<String> {
     let election: ElectionProps = serde_json::from_str(&election_json)?;
     let epub = election.build(&seed)?;
@@ -21,7 +19,6 @@ pub fn compile_election_def(election_json: String, seed: String) -> Result<Strin
     Ok(res)
 }
 
-#[frb]
 pub async fn store_election(election_json: String, context: &Context) -> Result<Vec<u8>> {
     let mut conn = context.connect().await?;
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
@@ -29,7 +26,6 @@ pub async fn store_election(election_json: String, context: &Context) -> Result<
     Ok(election.hash()?.to_vec())
 }
 
-#[frb]
 pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
@@ -48,7 +44,6 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
     Ok(())
 }
 
-#[frb]
 pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let hash = hex::decode(&hash)?;
@@ -72,7 +67,6 @@ pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context
     Ok(())
 }
 
-#[frb]
 pub async fn decode_ballots(hash: String, election_seed: String, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let hash = hex::decode(&hash)?;
@@ -103,7 +97,6 @@ pub async fn collect_results(context: &Context) -> Result<Vec<VoteResultItem>> {
     Ok(res)
 }
 
-#[frb]
 pub async fn get_balance(
     hash: String,
     id_account: u32,
@@ -136,7 +129,6 @@ async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
     Ok(())
 }
 
-#[frb]
 pub async fn vote(
     hash: String,
     id_account: u32,
@@ -162,7 +154,6 @@ pub async fn vote(
     Ok(())
 }
 
-#[frb]
 pub async fn mint(
     hash: String,
     id_account: u32,
@@ -185,7 +176,6 @@ pub async fn mint(
     Ok(())
 }
 
-#[frb]
 pub async fn delegate(
     hash: String,
     id_account: u32,
@@ -210,7 +200,6 @@ pub async fn delegate(
     Ok(())
 }
 
-#[frb]
 pub async fn get_account_address(id_account: u32, context: &Context) -> Result<String> {
     let mut conn = context.connect().await?;
     let address =

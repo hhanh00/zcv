@@ -6,7 +6,7 @@ use clap::Parser;
 use juniper::{EmptySubscription, RootNode};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
-use zcvlib::api::Context;
+use zcvlib::context::Context;
 
 pub mod voter;
 

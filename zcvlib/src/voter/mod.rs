@@ -1,5 +1,5 @@
 use bigdecimal::{BigDecimal, ToPrimitive, num_bigint::BigInt};
-use zcvlib::{api::Context, error::IntoAnyhow};
+use zcvlib::{context::Context, error::IntoAnyhow};
 
 pub mod mutation;
 pub mod query;

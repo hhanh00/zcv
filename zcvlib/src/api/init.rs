@@ -1,4 +1,3 @@
-use flutter_rust_bridge::frb;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     fmt::{
@@ -10,10 +9,9 @@ use tracing_subscriber::{
     EnvFilter, Layer, Registry,
 };
 
-#[frb(init)]
-pub fn init_app() {
+pub fn init_logger() {
     // Default utilities - feel free to customize
-    flutter_rust_bridge::setup_default_user_utils();
+    // flutter_rust_bridge::setup_default_user_utils();
     let _ = Registry::default()
         .with(default_layer())
         .with(env_layer())
