@@ -41,7 +41,7 @@ tonic-prost-build = "0.14"
 zcash_address = "0.10"
 zcash_note_encryption = "0.4"
 zcash_protocol = "0.7"
-zip32 = "0.2"
+zip32 = "0.2.1"
 redact = {version = "0.1", features = ["serde"]}
 hex-literal = "1.1"
 
