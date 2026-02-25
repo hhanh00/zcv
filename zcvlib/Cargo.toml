@@ -21,7 +21,7 @@ name = "creator"
 path = "src/creator-cli.rs"
 
 [dependencies]
-flutter_rust_bridge = "=2.11.1"
+# flutter_rust_bridge = "=2.11.1"
 
 orchard = { workspace = true }
 figment = { workspace = true }
