@@ -20,6 +20,24 @@ pub struct ZCVServer {
 
 #[async_trait]
 impl VoteStreamer for ZCVServer {
+    async fn get_election(&self, request: Request<Hash>) -> Result<Response<Election>, Status> {
+        let request = request.into_inner();
+        let res = async move {
+            let c = self.context.lock().await;
+            let mut conn = c.connect().await?;
+            let (election,): (String, ) = query_as(
+                "SELECT data FROM v_elections
+                WHERE hash = ?1",
+            )
+            .bind(&request.hash)
+            .fetch_one(&mut *conn)
+            .await.context("get_election")?;
+            let election = Election { election };
+            Ok::<_, anyhow::Error>(Response::new(election))
+        };
+        res.await.map_err(to_tonic)
+    }
+
     async fn set_election(&self, request: Request<Election>) -> Result<Response<Hash>, Status> {
         let res = async move {
             let election = request.into_inner();
