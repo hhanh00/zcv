@@ -151,6 +151,29 @@ pub mod vote_streamer_client {
             self.inner = self.inner.max_encoding_message_size(limit);
             self
         }
+        pub async fn get_election(
+            &mut self,
+            request: impl tonic::IntoRequest<super::Hash>,
+        ) -> std::result::Result<tonic::Response<super::Election>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/cash.z.vote.sdk.rpc.VoteStreamer/GetElection",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("cash.z.vote.sdk.rpc.VoteStreamer", "GetElection"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn set_election(
             &mut self,
             request: impl tonic::IntoRequest<super::Election>,
@@ -308,6 +331,10 @@ pub mod vote_streamer_server {
     /// Generated trait containing gRPC methods that should be implemented for use with VoteStreamerServer.
     #[async_trait]
     pub trait VoteStreamer: std::marker::Send + std::marker::Sync + 'static {
+        async fn get_election(
+            &self,
+            request: tonic::Request<super::Hash>,
+        ) -> std::result::Result<tonic::Response<super::Election>, tonic::Status>;
         async fn set_election(
             &self,
             request: tonic::Request<super::Election>,
@@ -418,6 +445,49 @@ pub mod vote_streamer_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
+                "/cash.z.vote.sdk.rpc.VoteStreamer/GetElection" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetElectionSvc<T: VoteStreamer>(pub Arc<T>);
+                    impl<T: VoteStreamer> tonic::server::UnaryService<super::Hash>
+                    for GetElectionSvc<T> {
+                        type Response = super::Election;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::Hash>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as VoteStreamer>::get_election(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetElectionSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/cash.z.vote.sdk.rpc.VoteStreamer/SetElection" => {
                     #[allow(non_camel_case_types)]
                     struct SetElectionSvc<T: VoteStreamer>(pub Arc<T>);

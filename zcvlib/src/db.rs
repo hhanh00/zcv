@@ -27,6 +27,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
         hash BLOB NOT NULL,
+        account INTEGER,
+        url TEXT,
         started BOOL NOT NULL)",
     )
     .execute(&mut *conn)
