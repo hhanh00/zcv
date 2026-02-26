@@ -50,8 +50,8 @@ pub async fn scan_blocks(
     end: u32,
 ) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
-    query("DELETE FROM notes").execute(&mut *db_tx).await?;
-    query("DELETE FROM spends").execute(&mut *db_tx).await?;
+    query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
+    query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
     let domains = get_domains(&mut db_tx, hash).await?;
 
     let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
@@ -135,7 +135,7 @@ pub async fn scan_blocks(
         }
     }
     query(
-        "UPDATE elections SET height = ?1, position = ?2
+        "UPDATE v_elections SET height = ?1, position = ?2
     WHERE hash = ?3",
     )
     .bind(end)

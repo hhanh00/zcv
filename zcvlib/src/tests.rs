@@ -93,7 +93,7 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
 }
 
 pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
-    let (c,): (u32,) = query_as("SELECT COUNT(*) FROM notes")
+    let (c,): (u32,) = query_as("SELECT COUNT(*) FROM v_notes")
         .fetch_one(&mut *conn)
         .await?;
     if c != 0 {
