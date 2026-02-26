@@ -64,7 +64,7 @@ pub struct ServerState {
 impl ServerState {
     pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
-        let (started,): (bool,) = query_as("SELECT started FROM state WHERE id = 0")
+        let (started,): (bool,) = query_as("SELECT started FROM v_state WHERE id = 0")
             .fetch_one(&mut *conn)
             .await
             .context("get started")?;
@@ -287,7 +287,7 @@ impl Application for Server {
                             }
                             TypeOneof::Start(_) => {
                                 state.started = true;
-                                query("UPDATE state SET started = 1 WHERE id = 0")
+                                query("UPDATE v_state SET started = 1 WHERE id = 0")
                                     .execute(&mut *db_tx)
                                     .await?;
                             }
@@ -340,7 +340,7 @@ impl Application for Server {
 }
 
 pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<bool> {
-    let exists = query("SELECT 1 FROM actions WHERE dnf = ?1")
+    let exists = query("SELECT 1 FROM v_actions WHERE dnf = ?1")
         .bind(nf)
         .fetch_optional(&mut *conn)
         .await?

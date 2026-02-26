@@ -87,6 +87,6 @@ jobs:
           [[ $HEIGHT2b -le $HEIGHT3 ]]
           ./tests/submit_ballots.sh
           sleep 10
-          export COUNT=$(sqlite3 node1/vote.db "SELECT COUNT(*) FROM ballots")
+          export COUNT=$(sqlite3 node1/vote.db "SELECT COUNT(*) FROM v_ballots")
           echo $COUNT
           [[ $COUNT -gt 0 ]]

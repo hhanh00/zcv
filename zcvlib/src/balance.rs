@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pasta_curves::Fp;
 use ff::PrimeField;
 use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
@@ -11,8 +12,8 @@ pub async fn list_unspent_notes(
 ) -> ZCVResult<Vec<UTXO>> {
     let utxos = query(
         "SELECT n.height, scope, position, nf, dnf, rho, diversifier, rseed, n.value
-        FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
-        JOIN questions q ON q.id_question = n.question
+        FROM v_notes n LEFT JOIN v_spends s ON n.id_note = s.id_note
+        JOIN v_questions q ON q.id_question = n.question
         WHERE s.id_note IS NULL AND q.domain = ?1
         AND n.account = ?2",
     )
@@ -41,7 +42,8 @@ pub async fn list_unspent_notes(
         }
     })
     .fetch_all(conn)
-    .await?;
+    .await
+    .context("list_unspent_notes")?;
     Ok(utxos)
 }
 

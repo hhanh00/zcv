@@ -102,10 +102,10 @@ fn dummy_witnesses() -> BallotWitnesses {
 }
 
 pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteResultItem>> {
-    query("DELETE FROM final_results")
+    query("DELETE FROM v_final_results")
         .execute(&mut *conn)
         .await?;
-    let results = query("SELECT question, answer, votes FROM results")
+    let results = query("SELECT question, answer, votes FROM v_results")
         .map(|r: SqliteRow| {
             let idx_question: u32 = r.get(0);
             let answer: Vec<u8> = r.get(1);
@@ -132,7 +132,7 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteR
     }
     for (k, v) in items {
         query(
-            "INSERT INTO final_results
+            "INSERT INTO v_final_results
         (idx_question, idx_sub_question, idx_answer, votes)
         VALUES (?1, ?2, ?3, ?4)",
         )
@@ -144,7 +144,7 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteR
         .await?;
     }
     let counts = query("SELECT idx_question, idx_sub_question, idx_answer, votes
-    FROM final_results ORDER BY idx_question, idx_sub_question, idx_answer")
+    FROM v_final_results ORDER BY idx_question, idx_sub_question, idx_answer")
     .map(|r: SqliteRow| {
         let idx_question: u32 = r.get(0);
         let idx_sub_question: u32 = r.get(1);

@@ -24,7 +24,7 @@ use crate::{
 
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     query(
-        "CREATE TABLE IF NOT EXISTS state(
+        "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
         hash BLOB NOT NULL,
         started BOOL NOT NULL)",
@@ -32,13 +32,13 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     query(
-        "INSERT INTO state(id, hash, started)
+        "INSERT INTO v_state(id, hash, started)
     VALUES (0, '', FALSE) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
     query(
-        "CREATE TABLE IF NOT EXISTS account(
+        "CREATE TABLE IF NOT EXISTS accounts(
         id_account INTEGER PRIMARY KEY,
         seed TEXT NOT NULL,
         aindex INTEGER NOT NULL)",
@@ -46,7 +46,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     query(
-        "CREATE TABLE IF NOT EXISTS elections(
+        "CREATE TABLE IF NOT EXISTS v_elections(
         id_election INTEGER PRIMARY KEY,
         hash BLOB NOT NULL,
         apphash BLOB NOT NULL,
@@ -62,7 +62,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     query(
-        "CREATE TABLE IF NOT EXISTS questions(
+        "CREATE TABLE IF NOT EXISTS v_questions(
         id_question INTEGER PRIMARY KEY,
         election INTEGER NOT NULL,
         idx INTEGER NOT NULL,
@@ -76,7 +76,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS notes(
+        "CREATE TABLE IF NOT EXISTS v_notes(
         id_note INTEGER PRIMARY KEY,
         account INTEGER NOT NULL,
         question INTEGER NOT NULL,
@@ -95,7 +95,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS spends(
+        "CREATE TABLE IF NOT EXISTS v_spends(
         id_note INTEGER PRIMARY KEY,
         height INTEGER NOT NULL,
         value INTEGER NOT NULL)",
@@ -105,7 +105,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
 
     // server / validator
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS ballots(
+        "CREATE TABLE IF NOT EXISTS v_ballots(
         id_ballot INTEGER PRIMARY KEY,
         height INTEGER NOT NULL,
         itx INTEGER NOT NULL,
@@ -117,7 +117,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     query(
-        "CREATE TABLE IF NOT EXISTS actions(
+        "CREATE TABLE IF NOT EXISTS v_actions(
         id_action INTEGER PRIMARY KEY,
         height INTEGER NOT NULL,
         ballot INTEGER NOT NULL,
@@ -130,7 +130,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .await?;
     // server / validator
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS results(
+        "CREATE TABLE IF NOT EXISTS v_results(
         id_result INTEGER PRIMARY KEY,
         question INTEGER NOT NULL,
         answer BLOB NOT NULL,
@@ -139,7 +139,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS final_results(
+        "CREATE TABLE IF NOT EXISTS v_final_results(
         idx_question INTEGER NOT NULL,
         idx_sub_question INTEGER NOT NULL,
         idx_answer INTEGER NOT NULL,
@@ -159,7 +159,7 @@ pub async fn set_account_seed(
 ) -> ZCVResult<()> {
     Mnemonic::parse(mnemonic).anyhow()?;
     query(
-        "INSERT INTO account(id_account, seed, aindex)
+        "INSERT INTO accounts(id_account, seed, aindex)
     VALUES (?1, ?2, ?3) ON CONFLICT DO UPDATE
     SET seed = excluded.seed, aindex = excluded.aindex",
     )
@@ -177,7 +177,7 @@ pub async fn get_account_address(
     id_account: u32,
 ) -> ZCVResult<String> {
     let (seed, aindex): (String, u32) =
-        query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
+        query_as("SELECT seed, aindex FROM accounts WHERE id_account = ?1")
             .bind(id_account)
             .fetch_one(conn)
             .await
@@ -197,7 +197,7 @@ pub async fn store_election(
     let hash = election.hash()?;
     let json = serde_json::to_string(election).anyhow()?;
     let (id_election,): (u32,) = query_as(
-        "INSERT INTO elections
+        "INSERT INTO v_elections
             (hash, apphash, start, end, height, position, need_sig, name, data)
             VALUES (?, '', ?, ?, ?, 0, ?, ?, ?) ON CONFLICT DO UPDATE SET
             start = excluded.start,
@@ -222,7 +222,7 @@ pub async fn store_election(
         let q_js = serde_json::to_string(q).anyhow()?;
         let domain = q.domain(election)?;
         query(
-            "INSERT INTO questions
+            "INSERT INTO v_questions
                 (election, idx, domain, address, title, subtitle, data)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT DO UPDATE SET
@@ -251,7 +251,7 @@ pub async fn get_ivks(
     id_account: u32,
 ) -> ZCVResult<(FullViewingKey, IncomingViewingKey, IncomingViewingKey)> {
     let (seed, aindex): (String, u32) =
-        query_as("SELECT seed, aindex FROM account WHERE id_account = ?1")
+        query_as("SELECT seed, aindex FROM accounts WHERE id_account = ?1")
             .bind(id_account)
             .fetch_one(conn)
             .await
@@ -263,7 +263,7 @@ pub async fn get_ivks(
 }
 
 pub async fn set_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<()> {
-    query("UPDATE state SET hash = ?1 WHERE id = 0")
+    query("UPDATE v_state SET hash = ?1 WHERE id = 0")
         .bind(hash)
         .execute(conn)
         .await?;
@@ -271,7 +271,7 @@ pub async fn set_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult
 }
 
 pub async fn get_election(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<ElectionPropsPub> {
-    let (election,): (String,) = query_as("SELECT data FROM elections WHERE hash = ?1")
+    let (election,): (String,) = query_as("SELECT data FROM v_elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
         .await
@@ -286,8 +286,8 @@ pub async fn get_domain(
     idx_question: usize,
 ) -> ZCVResult<(Fp, String)> {
     let (domain, address): (Vec<u8>, String) = query_as(
-        "SELECT q.domain, q.address FROM questions q
-        JOIN elections e ON q.election = e.id_election
+        "SELECT q.domain, q.address FROM v_questions q
+        JOIN v_elections e ON q.election = e.id_election
     WHERE e.hash = ?1 AND q.idx = ?2",
     )
     .bind(hash)
@@ -300,7 +300,7 @@ pub async fn get_domain(
 }
 
 pub async fn get_apphash(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<Option<Vec<u8>>> {
-    let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM elections WHERE hash = ?1")
+    let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM v_elections WHERE hash = ?1")
         .bind(hash)
         .fetch_optional(conn)
         .await?
@@ -313,7 +313,7 @@ pub async fn store_apphash(
     hash: &[u8],
     apphash: &[u8],
 ) -> ZCVResult<()> {
-    query("UPDATE elections SET apphash = ?2 WHERE hash = ?1")
+    query("UPDATE v_elections SET apphash = ?2 WHERE hash = ?1")
         .bind(hash)
         .bind(apphash)
         .execute(conn)
@@ -327,7 +327,7 @@ pub async fn store_election_height_position(
     height: u32,
     position: u32,
 ) -> ZCVResult<()> {
-    query("UPDATE elections SET height = ?1, position = ?2 WHERE hash = ?3")
+    query("UPDATE v_elections SET height = ?1, position = ?2 WHERE hash = ?3")
         .bind(height)
         .bind(position)
         .bind(hash)
@@ -341,7 +341,7 @@ pub async fn store_election_height_inc_position(
     hash: &[u8],
     height: u32,
 ) -> ZCVResult<()> {
-    query("UPDATE elections SET height = ?1, position = position + 1 WHERE hash = ?2")
+    query("UPDATE v_elections SET height = ?1, position = position + 1 WHERE hash = ?2")
         .bind(height)
         .bind(hash)
         .execute(db_tx)
@@ -350,7 +350,7 @@ pub async fn store_election_height_inc_position(
 }
 
 pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
-    let (height,): (u32,) = query_as("SELECT height FROM elections WHERE hash = ?1")
+    let (height,): (u32,) = query_as("SELECT height FROM v_elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
         .await
@@ -359,7 +359,7 @@ pub async fn get_election_height(conn: &mut SqliteConnection, hash: &[u8]) -> ZC
 }
 
 pub async fn get_election_position(conn: &mut SqliteConnection, hash: &[u8]) -> ZCVResult<u32> {
-    let (position,): (u32,) = query_as("SELECT position FROM elections WHERE hash = ?1")
+    let (position,): (u32,) = query_as("SELECT position FROM v_elections WHERE hash = ?1")
         .bind(hash)
         .fetch_one(conn)
         .await
@@ -368,7 +368,7 @@ pub async fn get_election_position(conn: &mut SqliteConnection, hash: &[u8]) -> 
 }
 
 pub async fn get_question(conn: &mut SqliteConnection, domain: Fp) -> ZCVResult<QuestionPropPub> {
-    let (data,): (String,) = query_as("SELECT data FROM questions WHERE domain = ?1")
+    let (data,): (String,) = query_as("SELECT data FROM v_questions WHERE domain = ?1")
         .bind(domain.to_repr().as_slice())
         .fetch_one(conn)
         .await
@@ -382,8 +382,8 @@ pub async fn get_domains(
     hash: &[u8],
 ) -> ZCVResult<Vec<(u32, u32, Fp)>> {
     let domains = query(
-        "SELECT q.id_question, q.idx, q.domain FROM questions q
-        JOIN elections e ON e.id_election = q.election
+        "SELECT q.id_question, q.idx, q.domain FROM v_questions q
+        JOIN v_elections e ON e.id_election = q.election
         WHERE e.hash = ?1 ORDER BY q.idx",
     )
     .bind(hash)
@@ -404,7 +404,7 @@ pub async fn list_unspent_nullifiers(
     id_account: u32,
 ) -> ZCVResult<Vec<Vec<u8>>> {
     let dnfs = query(
-        "SELECT n.dnf FROM notes n LEFT JOIN spends s ON n.id_note = s.id_note
+        "SELECT n.dnf FROM v_notes n LEFT JOIN v_spends s ON n.id_note = s.id_note
         WHERE s.id_note IS NULL
         AND n.account = ?1",
     )
@@ -431,7 +431,7 @@ pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVRes
 }
 
 pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> ZCVResult<()> {
-    query("DELETE FROM notes WHERE height >= ?1 AND height <= ?2")
+    query("DELETE FROM v_notes WHERE height >= ?1 AND height <= ?2")
         .bind(start)
         .bind(end)
         .execute(conn)
@@ -456,7 +456,7 @@ pub async fn store_received_note(
     let dnf = note.nullifier_domain(fvk, election_domain);
 
     query(
-        "INSERT INTO notes
+        "INSERT INTO v_notes
     (account, question, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
@@ -485,9 +485,9 @@ pub async fn store_spend(
     height: u32,
 ) -> ZCVResult<()> {
     query(
-        "INSERT INTO spends
+        "INSERT INTO v_spends
         (id_note, height, value)
-        SELECT id_note, ?3, -value FROM notes WHERE question = ?1 AND nf = ?2",
+        SELECT id_note, ?3, -value FROM v_notes WHERE question = ?1 AND nf = ?2",
     )
     .bind(id_question)
     .bind(nf)
@@ -505,9 +505,9 @@ pub async fn store_ballot_spend(
     height: u32,
 ) -> ZCVResult<()> {
     query(
-        "INSERT INTO spends
+        "INSERT INTO v_spends
         (id_note, height, value)
-        SELECT id_note, ?3, -value FROM notes WHERE account = ?1 AND question = ?2 AND dnf = ?3",
+        SELECT id_note, ?3, -value FROM v_notes WHERE account = ?1 AND question = ?2 AND dnf = ?3",
     )
     .bind(id_account)
     .bind(id_question)
@@ -533,8 +533,8 @@ pub async fn store_ballot(
 
     let mut db_tx = conn.begin().await?;
     let id_ballot = query(
-        "INSERT INTO ballots(height, itx, question, data, witnesses)
-    SELECT ?1, ?2, id_question, ?3, ?4 FROM questions
+        "INSERT INTO v_ballots(height, itx, question, data, witnesses)
+    SELECT ?1, ?2, id_question, ?3, ?4 FROM v_questions
     WHERE domain = ?5 ON CONFLICT DO NOTHING
     RETURNING id_ballot",
     )
@@ -550,7 +550,7 @@ pub async fn store_ballot(
     if let Some(id_ballot) = id_ballot {
         for (idx, a) in data.actions.iter().enumerate() {
             query(
-                "INSERT INTO actions(ballot, idx, height, dnf, cmx)
+                "INSERT INTO v_actions(ballot, idx, height, dnf, cmx)
         VALUES (?1, ?2, ?3, ?4, ?5)",
             )
             .bind(id_ballot)
@@ -577,7 +577,7 @@ pub async fn get_ballot_range(
 ) -> ZCVResult<()> {
     tokio::spawn(async move {
         let mut s = query(
-            "SELECT height, itx, data, witnesses FROM ballots
+            "SELECT height, itx, data, witnesses FROM v_ballots
     WHERE height >= ?1 AND height <= ?2 ORDER BY height, itx",
         )
         .bind(start)
@@ -614,7 +614,7 @@ pub async fn store_result(
     value: u64,
 ) -> ZCVResult<()> {
     query(
-        "INSERT INTO results(question, answer, votes)
+        "INSERT INTO v_results(question, answer, votes)
     VALUES (?1, ?2, ?3)",
     )
     .bind(idx_question)
@@ -641,7 +641,7 @@ mod tests {
         let mut conn = get_connection().await?;
         let (c,): (u32,) = sqlx::query_as(
             "SELECT 1 FROM sqlite_master WHERE type = 'table'
-            AND name = 'elections'",
+            AND name = 'v_elections'",
         )
         .fetch_one(&mut *conn)
         .await?;
@@ -671,7 +671,7 @@ mod tests {
     async fn test_store_ballot() -> Result<()> {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
-        query("DELETE FROM ballots").execute(&mut *conn).await?;
+        query("DELETE FROM v_ballots").execute(&mut *conn).await?;
         let election = get_election(&mut conn, TEST_ELECTION_HASH).await?;
         let (domain, _address) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
         let dummy_ballot = Ballot {
@@ -691,7 +691,7 @@ mod tests {
             },
         };
         store_ballot(&mut conn, election.end + 1, 0, dummy_ballot).await?;
-        let (count_ballot,): (u32,) = query_as("SELECT COUNT(*) FROM ballots")
+        let (count_ballot,): (u32,) = query_as("SELECT COUNT(*) FROM v_ballots")
             .fetch_one(&mut *conn)
             .await?;
         assert_eq!(count_ballot, 1);
