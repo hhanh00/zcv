@@ -1,11 +1,13 @@
-start: 2978050
-end: 3218812
+start: 3155000
+end: 3169000
 need_sig: true
 name: NU7 Sentiment Poll
 questions:
-  - title: "What is your general sentiment toward including the following protocol features?"
+  - title: "NU7 Sentiment Poll"
+    subtitle: "What is your general sentiment toward including the following protocol features?"
     choices:
     - title: "Zcash Shielded Assets (ZSAs)"
+      subtitle: ""
       answers:
       - Support
       - Oppose
