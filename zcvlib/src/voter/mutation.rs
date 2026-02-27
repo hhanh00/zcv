@@ -28,7 +28,7 @@ impl Mutation {
     }
 
     async fn scan_notes(hash: String, id_account: i32, ctx: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_notes(hash, id_account as u32, &ctx.0).await?;
+        zcvlib::api::simple::scan_notes(hash, id_account as u32, &(), &ctx.0).await?;
         Ok(true)
     }
 

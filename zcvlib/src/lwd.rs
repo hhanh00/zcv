@@ -1,18 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ZCVResult,
-    db::{
+    ZCVResult, api::ProgressReporter, db::{
         derive_spending_key, get_domains, get_ivks, list_unspent_nullifiers, store_ballot_spend,
         store_election_height_position, store_received_note, store_result, store_spend,
-    },
-    error::IntoAnyhow,
-    rpc::{
+    }, error::IntoAnyhow, rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
-    },
-    tiu,
-    vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
+    }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
 };
 use ff::PrimeField;
 use orchard::{
@@ -40,7 +35,8 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
-pub async fn scan_blocks(
+#[allow(clippy::too_many_arguments)]
+pub async fn scan_blocks<PR: ProgressReporter>(
     network: &Network,
     conn: &mut SqliteConnection,
     client: &mut Client,
@@ -48,6 +44,7 @@ pub async fn scan_blocks(
     id_account: u32,
     start: u32,
     end: u32,
+    pr: &PR,
 ) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
@@ -76,11 +73,17 @@ pub async fn scan_blocks(
         }))
         .await?
         .into_inner();
+    let report_interval = (end - start) / 100;
 
     let mut position = crate::db::get_election_position(&mut db_tx, hash).await?;
 
     while let Some(block) = blocks.message().await? {
         let height = block.height as u32;
+        if (height - start).is_multiple_of(report_interval) {
+            let p = (height - start) / report_interval;
+            pr.report(p);
+        }
+
         for tx in block.vtx {
             for a in tx.actions {
                 let CompactOrchardAction {
