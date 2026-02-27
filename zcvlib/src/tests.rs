@@ -109,6 +109,7 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         0,
         3_168_000,
         3_169_000,
+        &(),
     )
     .await?;
     // Sleep to give some time for the scan to commit

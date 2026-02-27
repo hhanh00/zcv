@@ -4,6 +4,7 @@ use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
 
+use crate::api::ProgressReporter;
 use crate::context::Context;
 use crate::db::{get_domain, get_election, get_election_height};
 use crate::lwd::{VoteClient, connect};
@@ -26,7 +27,7 @@ pub async fn store_election(election_json: String, context: &Context) -> Result<
     Ok(election.hash()?.to_vec())
 }
 
-pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Result<()> {
+pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr: &PR, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
     let e = get_election(&mut conn, &hash).await?;
@@ -39,6 +40,7 @@ pub async fn scan_notes(hash: String, id_account: u32, context: &Context) -> Res
         id_account,
         e.start,
         e.end,
+        pr,
     )
     .await?;
     Ok(())
