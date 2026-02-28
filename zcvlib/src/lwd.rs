@@ -17,7 +17,7 @@ use orchard::{
     vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
-use sqlx::{Acquire, SqliteConnection, query};
+use sqlx::{Acquire, SqliteConnection, query, query_as};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
@@ -46,6 +46,12 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     end: u32,
     pr: &PR,
 ) -> ZCVResult<()> {
+    let (end, height): (u32, u32) = query_as("SELECT end, height FROM v_elections WHERE hash = ?1")
+    .bind(hash)
+    .fetch_one(&mut *conn)
+    .await?;
+    if end == height { return Ok(()); }
+
     let mut db_tx = conn.begin().await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
