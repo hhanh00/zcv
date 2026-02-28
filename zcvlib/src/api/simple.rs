@@ -27,6 +27,12 @@ pub async fn store_election(election_json: String, context: &Context) -> Result<
     Ok(election.hash()?.to_vec())
 }
 
+pub async fn client_delete_election(context: &Context) -> Result<()> {
+    let mut conn = context.connect().await?;
+    crate::db::client_delete_election(&mut conn).await?;
+    Ok(())
+}
+
 pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr: &PR, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;

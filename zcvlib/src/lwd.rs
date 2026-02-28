@@ -50,7 +50,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     .bind(hash)
     .fetch_one(&mut *conn)
     .await?;
-    if end == height { return Ok(()); }
+    if end <= height { return Ok(()); }
 
     let mut db_tx = conn.begin().await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;

@@ -39,7 +39,7 @@ pub fn create_election_file(config: &Config) -> Result<[u8; 32]> {
     let mut output = File::create(&config.output_file)?;
     serde_json::to_writer_pretty(&mut output, &e)?;
     let hash = e.hash()?;
-    tracing::info!("Election hash: {}", hex::encode(&hash));
+    tracing::info!("Election hash: {}", hex::encode(hash));
     Ok(hash)
 }
 
