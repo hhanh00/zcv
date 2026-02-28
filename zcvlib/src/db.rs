@@ -247,6 +247,25 @@ pub async fn store_election(
     Ok(id_election)
 }
 
+pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()> {
+    let mut db_tx = conn.begin().await?;
+    query("UPDATE v_state SET url = NULL, hash = x'',
+    account = NULL, started = 0 WHERE id = 0")
+    .execute(&mut *db_tx)
+    .await?;
+    query("DELETE FROM v_elections")
+    .execute(&mut *db_tx)
+    .await?;
+    query("DELETE FROM v_notes")
+    .execute(&mut *db_tx)
+    .await?;
+    query("DELETE FROM v_spends")
+    .execute(&mut *db_tx)
+    .await?;
+    db_tx.commit().await?;
+    Ok(())
+}
+
 pub async fn get_ivks(
     network: &Network,
     conn: &mut SqliteConnection,
