@@ -9,55 +9,66 @@ questions:
     - title: "Zcash Shielded Assets (ZSAs)"
       subtitle: ""
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Network Sustainability Mechanism (NSM)
       subtitle: including smoothing the issuance curve, which allows ZEC to be removed from circulation and later reissued as future block rewards to help sustain network security while preserving the 21 million ZEC supply cap
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Burning 60% of transaction fees via the NSM
       subtitle: The goals are to demonstrate Zcash’s commitment to long-term sustainability, to burn ZEC so that it can be re-issued in the future without exceeding the 21M supply cap, and in the context of dynamic fees, to prevent miners from manipulating fees
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Memo Bundles
       subtitle: which let transactions include memos larger than 512 bytes and share a memo across multiple recipients, and also permits inclusion of authenticated reply-to addresses
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Explicit Fees
       subtitle: allowing transaction fees to be clearly specified and committed to in the transaction
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Disallowing v4 transactions
       subtitle: reducing the complexity and attack surface of the Zcash protocol and would disable the ability to spend Sprout funds
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Project Tachyon
       subtitle: a new shielded protocol or pool to address scalability challenges
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: STARK proof verification
       subtitle: via Transparent Zcash Extensions (TZEs) to enable Layer-2 designs on Zcash
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Dynamic fee mechanism
       subtitle: a comparable-based, dynamic fees
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Consensus accounts
       subtitle: which generalize the functionality of the dev fund lockbox and reduce the operational expense of collecting ZCG funds and miner rewards
       answers:
+      - Abstain
       - Support
       - Oppose
     - title: Orchard quantum recoverability
       subtitle: which aims to ensure that if the security of elliptic curve-based cryptography came into doubt (due to the emergence of a cryptographically relevant quantum computer or otherwise), then new Orchard funds could remain recoverable by a later protocol — as opposed to having to be burnt in order to avoid an unbounded balance violation
       answers:
+      - Abstain
       - Support
       - Oppose

@@ -8,4 +8,4 @@ ELECTION_REQ=$(jq -n --arg election "$NU7" '{"election": $election}')
 echo $ELECTION_REQ
 
 grpcurl -d "$ELECTION_REQ" --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
-# 78F74E9A1C6D0FE82F91104548D503D1742E262B6B1346F13945420342F29A21
+# 85F0F0E62EA0E7257CCB5E2FE035F0851C8D737A05E14977B1AC06D376520EC4
