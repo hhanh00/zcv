@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.4.0...zcvlib-v0.5.0) (2026-02-28)
+
+
+### Features
+
+* add get_election rpc to vote server ([#131](https://github.com/hhanh00/zcv/issues/131)) ([564ab39](https://github.com/hhanh00/zcv/commit/564ab39dd6ab22f29dde4cf1c03e1ed469271d36))
+* add scan progress reporter ([#133](https://github.com/hhanh00/zcv/issues/133)) ([44bb541](https://github.com/hhanh00/zcv/commit/44bb5412f3ec71240a8b02661c4cad260b644709))
+* **client:** delete election ([#135](https://github.com/hhanh00/zcv/issues/135)) ([0169edf](https://github.com/hhanh00/zcv/commit/0169edf8dfe5c395011e23df778c878801cb7360))
+
+
+### Bug Fixes
+
+* add a prefix v_ to every table ([#130](https://github.com/hhanh00/zcv/issues/130)) ([a141866](https://github.com/hhanh00/zcv/commit/a141866f21a43308c2c32a3fd5abae731328be8d))
+* avoid scanning blocks if they were scanned before ([#134](https://github.com/hhanh00/zcv/issues/134)) ([d5ee50e](https://github.com/hhanh00/zcv/commit/d5ee50e19daefa1a42e476c40bc4829586774153))
+
+
+### Chores
+
+* remove flutter rust bridge ([#128](https://github.com/hhanh00/zcv/issues/128)) ([bd9fdcd](https://github.com/hhanh00/zcv/commit/bd9fdcd82ecb992d47deed117a8c0c970d47d1a3))
+
 ## [0.4.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.3.0...zcvlib-v0.4.0) (2026-02-19)
 
 
