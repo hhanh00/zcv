@@ -23,11 +23,11 @@ pub const TEST_SEED2: &str = "purity comic seek skull unfair host point dutch dr
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 pub const TEST_ELECTION_HASH: &[u8] =
-    &hex!("059f7f47936cbc080942035dded3f16d0e08b29347e08239dbba61c199de62f7");
+    &hex!("3dee33839470cf011f1647cc49cbc772fccbfc3c85fe66061c5b9521cfd3c7ae");
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
-        "start": 3155000,
+        "start": 3168000,
         "end": 3169000,
         "need_sig": true,
         "name": "Test Election",
@@ -107,8 +107,6 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         &mut client,
         TEST_ELECTION_HASH,
         0,
-        3_168_000,
-        3_169_000,
         &(),
     )
     .await?;

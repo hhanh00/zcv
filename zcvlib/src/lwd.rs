@@ -1,13 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ZCVResult, api::ProgressReporter, db::{
+    ZCVResult,
+    api::ProgressReporter,
+    db::{
         derive_spending_key, get_domains, get_ivks, list_unspent_nullifiers, store_ballot_spend,
-        store_election_height_position, store_received_note, store_result, store_spend,
-    }, error::IntoAnyhow, rpc::{
+        store_election_height_position, store_nf_cmx, store_received_note, store_result,
+        store_spend,
+    },
+    error::IntoAnyhow,
+    rpc::{
         BlockId, BlockRange, CompactOrchardAction, PoolType,
         compact_tx_streamer_client::CompactTxStreamerClient,
-    }, tiu, vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient}
+    },
+    tiu,
+    vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
 use ff::PrimeField;
 use orchard::{
@@ -42,19 +49,21 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     client: &mut Client,
     hash: &[u8],
     id_account: u32,
-    start: u32,
-    end: u32,
     pr: &PR,
 ) -> ZCVResult<()> {
-    let (end, height): (u32, u32) = query_as("SELECT end, height FROM v_elections WHERE hash = ?1")
-    .bind(hash)
-    .fetch_one(&mut *conn)
-    .await?;
-    if end <= height { return Ok(()); }
+    let (start, end, height): (u32, u32, u32) = query_as("SELECT start, end, height FROM v_elections WHERE hash = ?1")
+        .bind(hash)
+        .fetch_one(&mut *conn)
+        .await?;
+    if end <= height {
+        return Ok(());
+    }
 
     let mut db_tx = conn.begin().await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
+    query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
+    query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
     let domains = get_domains(&mut db_tx, hash).await?;
 
     let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
@@ -98,6 +107,8 @@ pub async fn scan_blocks<PR: ProgressReporter>(
                     ephemeral_key,
                     ciphertext,
                 } = a;
+                store_nf_cmx(&mut db_tx, &nullifier, &cmx).await?;
+
                 let nf: [u8; 32] = tiu!(nullifier);
                 if nfs.contains(&nf) {
                     for (id_question, _, _) in domains.iter() {
@@ -172,8 +183,18 @@ pub async fn scan_ballots(
     let mut ivks = vec![];
     for id_account in id_accounts {
         let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
-        ivks.push((*id_account, fvk.clone(), 0, PreparedIncomingViewingKey::new(&eivk)));
-        ivks.push((*id_account, fvk.clone(), 1, PreparedIncomingViewingKey::new(&iivk)));
+        ivks.push((
+            *id_account,
+            fvk.clone(),
+            0,
+            PreparedIncomingViewingKey::new(&eivk),
+        ));
+        ivks.push((
+            *id_account,
+            fvk.clone(),
+            1,
+            PreparedIncomingViewingKey::new(&iivk),
+        ));
     }
 
     let mut nfs: HashMap<[u8; 32], u32> = HashMap::new();
