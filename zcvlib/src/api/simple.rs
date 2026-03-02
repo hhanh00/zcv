@@ -36,7 +36,6 @@ pub async fn client_delete_election(context: &Context) -> Result<()> {
 pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr: &PR, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
-    let e = get_election(&mut conn, &hash).await?;
     let mut client = connect(&context.lwd_url).await?;
     crate::lwd::scan_blocks(
         &Network::MainNetwork,
@@ -44,8 +43,6 @@ pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr:
         &mut client,
         &hash,
         id_account,
-        e.start,
-        e.end,
         pr,
     )
     .await?;

@@ -130,6 +130,20 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+    query(
+        "CREATE TABLE IF NOT EXISTS vc_nfs(
+        id_nf INTEGER PRIMARY KEY,
+        nf BLOB NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
+    query(
+        "CREATE TABLE IF NOT EXISTS vc_cmxs(
+        id_cmx INTEGER PRIMARY KEY,
+        cmx BLOB NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
     // server / validator
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS v_results(
@@ -208,7 +222,7 @@ pub async fn store_election(
             name = excluded.name,
             data = excluded.data
             RETURNING id_election",
-            // Do not reset the height
+        // Do not reset the height
     )
     .bind(hash.as_slice())
     .bind(election.start)
@@ -249,19 +263,17 @@ pub async fn store_election(
 
 pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
-    query("UPDATE v_state SET url = NULL, hash = x'',
-    account = NULL, started = 0 WHERE id = 0")
+    query(
+        "UPDATE v_state SET url = NULL, hash = x'',
+    account = NULL, started = 0 WHERE id = 0",
+    )
     .execute(&mut *db_tx)
     .await?;
     query("DELETE FROM v_elections")
-    .execute(&mut *db_tx)
-    .await?;
-    query("DELETE FROM v_notes")
-    .execute(&mut *db_tx)
-    .await?;
-    query("DELETE FROM v_spends")
-    .execute(&mut *db_tx)
-    .await?;
+        .execute(&mut *db_tx)
+        .await?;
+    query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
+    query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
     db_tx.commit().await?;
     Ok(())
 }
@@ -457,6 +469,26 @@ pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> 
         .bind(end)
         .execute(conn)
         .await?;
+    Ok(())
+}
+
+pub async fn store_nf_cmx(
+    conn: &mut SqliteConnection,
+    nullifier: &[u8],
+    cmx: &[u8],
+) -> ZCVResult<()> {
+    query(
+        "INSERT INTO vc_nfs(nf) VALUES (?1)
+        ON CONFLICT DO NOTHING")
+    .bind(nullifier)
+    .execute(&mut *conn)
+    .await?;
+    query(
+        "INSERT INTO vc_cmxs(cmx) VALUES (?1)
+        ON CONFLICT DO NOTHING")
+    .bind(cmx)
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 
