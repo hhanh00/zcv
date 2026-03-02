@@ -46,8 +46,9 @@ const rep = await client.request(storeElection, {
   election: JSON.stringify(election),
 });
 const hash = rep.storeElection;
+console.log(hash)
 
-const nVoters = 50;
+const nVoters = 10;
 for (var i = 1; i <= nVoters; i++) {
   const seed = bip39.generateMnemonic(256);
   const storeSeed = gql`
@@ -78,6 +79,7 @@ const sleep = (ms: number) => {
 await sleep(5000);
 const scan = gql`
   mutation scan($hash: String!, $accounts: [Int!]!) {
+    scanNotes(hash: $hash, idAccounts: [])
     scanBallots(hash: $hash, idAccounts: $accounts)
   }
 `;

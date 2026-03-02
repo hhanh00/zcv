@@ -27,8 +27,14 @@ impl Mutation {
         Ok(hex::encode(&hash))
     }
 
-    async fn scan_notes(hash: String, id_account: i32, ctx: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_notes(hash, id_account as u32, &(), &ctx.0).await?;
+    async fn scan_notes(hash: String, id_accounts: Vec<i32>, ctx: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::scan_notes(
+            hash,
+            id_accounts.into_iter().map(|a| a as u32).collect(),
+            &(),
+            &ctx.0,
+        )
+        .await?;
         Ok(true)
     }
 

@@ -2068,7 +2068,7 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=7a21ed7a14ed85b011bdc4e177fd6b0a699ed917#7a21ed7a14ed85b011bdc4e177fd6b0a699ed917"
+source = "git+https://github.com/hhanh00/orchard.git?rev=f1943f696930c89b43e97756b3b8d818657be635#f1943f696930c89b43e97756b3b8d818657be635"
 dependencies = [
  "aes",
  "bitvec",
