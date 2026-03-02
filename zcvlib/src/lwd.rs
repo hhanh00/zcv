@@ -5,7 +5,7 @@ use crate::{
     api::ProgressReporter,
     db::{
         derive_spending_key, get_domains, get_ivks, list_unspent_nullifiers, store_ballot_spend,
-        store_election_height_position, store_nf_cmx, store_received_note, store_result,
+        store_cmx, store_election_height_position, store_nf_cmx, store_received_note, store_result,
         store_spend,
     },
     error::IntoAnyhow,
@@ -51,10 +51,11 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     id_account: u32,
     pr: &PR,
 ) -> ZCVResult<()> {
-    let (start, end, height): (u32, u32, u32) = query_as("SELECT start, end, height FROM v_elections WHERE hash = ?1")
-        .bind(hash)
-        .fetch_one(&mut *conn)
-        .await?;
+    let (start, end, height): (u32, u32, u32) =
+        query_as("SELECT start, end, height FROM v_elections WHERE hash = ?1")
+            .bind(hash)
+            .fetch_one(&mut *conn)
+            .await?;
     if end <= height {
         return Ok(());
     }
@@ -223,6 +224,8 @@ pub async fn scan_ballots(
         let domain = Fp::from_repr(data.domain).unwrap();
         let id_question = domains.iter().find(|&d| d.2 == domain).unwrap().0;
         for a in data.actions.iter() {
+            // do not store nf since we are on the voting chain
+            store_cmx(&mut db_tx, &a.cmx).await?;
             tracing::info!("-nf: {}", hex::encode(a.nf));
             if let Some(id_account) = nfs.get(&a.nf) {
                 tracing::info!("Spend for {id_question}");

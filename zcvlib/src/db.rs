@@ -492,6 +492,19 @@ pub async fn store_nf_cmx(
     Ok(())
 }
 
+pub async fn store_cmx(
+    conn: &mut SqliteConnection,
+    cmx: &[u8],
+) -> ZCVResult<()> {
+    query(
+        "INSERT INTO vc_cmxs(cmx) VALUES (?1)
+        ON CONFLICT DO NOTHING")
+    .bind(cmx)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn store_received_note(
     conn: &mut SqliteConnection,
