@@ -13,7 +13,7 @@ use crate::{
     ZCVResult,
     ballot::encrypt_ballot_data,
     context::BFTContext,
-    db::{create_schema, set_account_seed, set_election, store_election},
+    db::{create_schema, set_account_seed, store_election},
     lwd::{connect, scan_blocks},
     pod::ElectionProps,
 };
@@ -23,7 +23,7 @@ pub const TEST_SEED2: &str = "purity comic seek skull unfair host point dutch dr
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 pub const TEST_ELECTION_HASH: &[u8] =
-    &hex!("3dee33839470cf011f1647cc49cbc772fccbfc3c85fe66061c5b9521cfd3c7ae");
+    &hex!("31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437");
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
@@ -34,17 +34,17 @@ pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
         "questions": [
             {
                 "title": "Q1. What is your favorite color?",
-                "choices": [{"answers": ["Red", "Green", "Blue"]}]
+                "answers": ["Red", "Green", "Blue"]
             },
             {
                 "title": "Q2. Is the earth flat?",
                 "subtitle": "",
-                "choices": [{"answers": ["Yes", "No"]}]
+                "answers": ["Yes", "No"]
             },
             {
                 "title": "Q3. Do you like pizza?",
                 "subtitle": "",
-                "choices": [{"answers": ["Yes", "No"]}]
+                "answers": ["Yes", "No"]
             }
         ]
     }));
@@ -88,7 +88,6 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
     let e = e.build(TEST_ELECTION_SEED)?;
     store_election(conn, &e).await?;
-    set_election(conn, &e.hash()?).await?;
     Ok(())
 }
 
@@ -105,7 +104,6 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         &Network::MainNetwork,
         conn,
         &mut client,
-        TEST_ELECTION_HASH,
         &[0],
         &(),
     )

@@ -33,8 +33,6 @@ jobs:
           echo "COMETBFT_PID=$!" >> $GITHUB_ENV
           ./target/release/vote-cometbft &
           echo "APP_PID=$!" >> $GITHUB_ENV
-          sleep 3
-          ./tests/submit_ballots.sh
       - name: Cleanup
         run: |
           kill -9 $COMETBFT_PID

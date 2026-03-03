@@ -21,25 +21,22 @@ use crate::{
 pub async fn vote(
     network: &Network,
     conn: &mut SqliteConnection,
-    hash: &[u8],
     id_account: u32,
-    idx_question: u32,
     memo: &[u8],
     amount: u64,
 ) -> ZCVResult<Ballot> {
-    let idx_question = idx_question as usize;
-    let (domain, address) = get_domain(conn, hash, idx_question).await?;
+    let (domain, address) = get_domain(conn).await?;
     let (_, recipient) = bech32::decode(&address).unwrap();
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
 
-    let e = get_election(conn, hash).await?;
+    let e = get_election(conn).await?;
     let sk = if e.need_sig {
         Some(get_account_sk(network, conn, id_account).await?)
     } else {
         None
     };
     let (fvk, _, _) = get_ivks(network, conn, id_account).await?;
-    let utxos = list_unspent_notes(conn, domain, id_account).await?;
+    let utxos = list_unspent_notes(conn, id_account).await?;
     let notes = utxos
         .into_iter()
         .map(|utxo| {
@@ -60,7 +57,7 @@ pub async fn vote(
     nfs.sort();
 
     // Check that we are not spending a previous nullifier
-    let utxos = list_unspent_notes(conn, domain, id_account).await?;
+    let utxos = list_unspent_notes(conn, id_account).await?;
     for note in utxos.iter() {
         let note_nf = Fp::from_repr(tiu!(note.nf.clone())).unwrap();
         if nfs.contains(&note_nf) {
@@ -122,13 +119,10 @@ pub async fn vote(
 pub async fn mint(
     network: &Network,
     conn: &mut SqliteConnection,
-    hash: &[u8],
     id_account: u32,
-    idx_question: u32,
     amount: u64,
 ) -> ZCVResult<Ballot> {
-    let idx_question = idx_question as usize;
-    let (domain, _) = get_domain(conn, hash, idx_question).await?;
+    let (domain, _) = get_domain(conn).await?;
     let address = get_account_address(network, conn, id_account).await?;
 
     let data = encrypt_ballot_data_with_spends(
@@ -153,14 +147,11 @@ pub async fn mint(
 pub async fn delegate(
     network: &Network,
     conn: &mut SqliteConnection,
-    hash: &[u8],
     id_account: u32,
-    idx_question: u32,
     address: &str,
     amount: u64,
 ) -> ZCVResult<Ballot> {
-    let idx_question = idx_question as usize;
-    let (domain, _) = get_domain(conn, hash, idx_question).await?;
+    let (domain, _) = get_domain(conn).await?;
 
     let data = encrypt_ballot_data(
         network,
@@ -191,24 +182,22 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteR
     query("DELETE FROM v_final_results")
         .execute(&mut *conn)
         .await?;
-    let results = query("SELECT question, answer, votes FROM v_results")
+    let results = query("SELECT answer, votes FROM v_results")
         .map(|r: SqliteRow| {
-            let idx_question: u32 = r.get(0);
-            let answer: Vec<u8> = r.get(1);
-            let votes: u64 = r.get(2);
-            (idx_question, answer, votes)
+            let answer: Vec<u8> = r.get(0);
+            let votes: u64 = r.get(1);
+            (answer, votes)
         })
         .fetch_all(&mut *conn)
         .await?;
     let mut items: HashMap<VoteResultItem, u64> = HashMap::new();
-    for (idx_question, answer, votes) in results {
+    for (answer, votes) in results {
         for (i, a) in answer.iter().enumerate() {
             if *a == 0 {
                 break;
             }
             let item = VoteResultItem {
-                idx_question,
-                idx_sub_question: i as u32,
+                idx_question: i as u32,
                 idx_answer: *a,
                 votes: 0,
             };
@@ -219,28 +208,25 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteR
     for (k, v) in items {
         query(
             "INSERT INTO v_final_results
-        (idx_question, idx_sub_question, idx_answer, votes)
-        VALUES (?1, ?2, ?3, ?4)",
+        (idx_question, idx_answer, votes)
+        VALUES (?1, ?2, ?3)",
         )
         .bind(k.idx_question)
-        .bind(k.idx_sub_question)
         .bind(k.idx_answer)
         .bind(v as i64)
         .execute(&mut *conn)
         .await?;
     }
     let counts = query(
-        "SELECT idx_question, idx_sub_question, idx_answer, votes
-    FROM v_final_results ORDER BY idx_question, idx_sub_question, idx_answer",
+        "SELECT idx_question, idx_answer, votes
+    FROM v_final_results ORDER BY idx_question, idx_answer",
     )
     .map(|r: SqliteRow| {
         let idx_question: u32 = r.get(0);
-        let idx_sub_question: u32 = r.get(1);
-        let idx_answer: u8 = r.get(2);
-        let votes: u64 = r.get(3);
+        let idx_answer: u8 = r.get(1);
+        let votes: u64 = r.get(2);
         VoteResultItem {
             idx_question,
-            idx_sub_question,
             idx_answer,
             votes,
         }
@@ -253,7 +239,6 @@ pub async fn collect_results(conn: &mut SqliteConnection) -> ZCVResult<Vec<VoteR
 #[derive(Hash, PartialEq, Eq)]
 pub struct VoteResultItem {
     pub idx_question: u32,
-    pub idx_sub_question: u32,
     pub idx_answer: u8,
     pub votes: u64,
 }
@@ -264,7 +249,7 @@ pub static VK: LazyLock<VerifyingKey<Circuit>> = LazyLock::new(VerifyingKey::bui
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use crate::{db::get_domain, tests::{TEST_ELECTION_HASH, get_connection, run_scan, test_setup}};
+    use crate::{db::get_domain, tests::{get_connection, run_scan, test_setup}};
 
     #[tokio::test]
     #[serial_test::serial]
@@ -273,7 +258,7 @@ mod tests {
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
         let (_domain, _address) =
-            get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
+            get_domain(&mut conn).await?;
 
         // TODO
         Ok(())

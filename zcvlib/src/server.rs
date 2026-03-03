@@ -2,7 +2,7 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        get_apphash, set_election, store_apphash, store_ballot, store_election,
+        get_apphash, store_apphash, store_ballot, store_election,
         store_election_height_inc_position,
     },
     error::IntoAnyhow,
@@ -44,8 +44,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, hash).await?;
+    pub async fn new(pool: SqlitePool) -> ZCVResult<Self> {
+        let server = ServerState::new(pool).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -54,15 +54,13 @@ impl Server {
 
 pub struct ServerState {
     pub pool: SqlitePool,
-    pub hash: Vec<u8>,
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
-    pub election_hash: Option<[u8; 32]>,
     pub check_witnesses_cache: HashMap<[u8; 32], bool>,
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool, hash: &[u8]) -> ZCVResult<Self> {
+    pub async fn new(pool: SqlitePool) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
         let (started,): (bool,) = query_as("SELECT started FROM v_state WHERE id = 0")
             .fetch_one(&mut *conn)
@@ -71,10 +69,8 @@ impl ServerState {
 
         Ok(Self {
             pool,
-            hash: hash.to_vec(),
             started,
             election: None,
-            election_hash: None,
             check_witnesses_cache: HashMap::new(),
         })
     }
@@ -102,7 +98,7 @@ impl Application for Server {
             let res = match msg {
                 TypeOneof::SetElection(election) => {
                     let election: ElectionPropsPub = serde_json::from_str(&election.election)?;
-                    election.hash()?.to_vec()
+                    election.domain.clone()
                 }
                 TypeOneof::Ballot(ballot) => {
                     let ballot = from_protobuf(&ballot)?;
@@ -242,7 +238,7 @@ impl Application for Server {
                 let mut validator_updates = vec![];
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
-                let apphash = get_apphash(&mut db_tx, &state.hash)
+                let apphash = get_apphash(&mut db_tx)
                     .await?
                     .unwrap_or_default();
                 let mut hasher = Params::new()
@@ -263,8 +259,6 @@ impl Application for Server {
                                 let election: ElectionPropsPub =
                                     serde_json::from_str(&election.election)?;
                                 store_election(&mut db_tx, &election).await?;
-                                set_election(&mut db_tx, &election.hash()?).await?;
-                                state.election_hash = Some(election.hash()?);
                                 state.election = Some(election);
                             }
                             TypeOneof::Ballot(ballot) => {
@@ -273,7 +267,6 @@ impl Application for Server {
                                 let hash = ballot.data.sighash()?;
                                 let election =
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
-                                let election_hash = state.election_hash.unwrap();
                                 let h = election.end + height as u32;
                                 state.check_witnesses(&ballot)?;
                                 // This will catch and fail on a double spend because of the UNIQUE dnf
@@ -282,7 +275,7 @@ impl Application for Server {
                                 if id_ballot.is_none() {
                                     tracing::info!("Tx already inserted {}", hex::encode(&hash));
                                 }
-                                store_election_height_inc_position(&mut db_tx, &election_hash, h)
+                                store_election_height_inc_position(&mut db_tx, h)
                                     .await?;
                             }
                             TypeOneof::Start(_) => {
@@ -321,7 +314,7 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, &state.hash, &apphash)
+                store_apphash(&mut db_tx, &apphash)
                     .await
                     .unwrap();
 
@@ -430,14 +423,13 @@ pub fn from_protobuf(ballot: &Ballot) -> std::io::Result<orchard::vote::Ballot> 
 
 pub async fn run_cometbft_app(
     context: Arc<tokio::sync::Mutex<BFTContext>>,
-    hash: &[u8],
     port: u16,
 ) -> ZCVResult<()> {
     let pool = {
         let c = context.lock().await;
         c.context.pool.clone()
     };
-    let app = Server::new(pool, hash).await?;
+    let app = Server::new(pool).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

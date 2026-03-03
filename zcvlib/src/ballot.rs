@@ -30,7 +30,7 @@ pub async fn encrypt_ballot_data<R: CryptoRng + RngCore>(
     amount: u64,
     mut rng: R,
 ) -> ZCVResult<BallotData> {
-    let mut utxos = list_unspent_notes(conn, domain, id_account).await?;
+    let mut utxos = list_unspent_notes(conn, id_account).await?;
     utxos.shuffle(&mut rng);
     let mut sum = 0;
     let utxos: Vec<_> = utxos
@@ -147,7 +147,6 @@ pub async fn decrypt_ballot_data(
     fvk: FullViewingKey,
     domain: Fp,
     id_account: u32,
-    question: u32,
     height: u32,
     position: u32,
     ballot: BallotData,
@@ -165,7 +164,6 @@ pub async fn decrypt_ballot_data(
                 &memo,
                 height,
                 position + i as u32,
-                question,
                 0, // ballots are sent to the external address
             )
             .await?;
@@ -196,7 +194,7 @@ mod tests {
         error::IntoAnyhow,
         pod::ZCV_HRP,
         tests::{
-            TEST_ELECTION_HASH, TEST_ELECTION_SEED, TEST_SEED, get_connection, run_scan,
+            TEST_ELECTION_SEED, TEST_SEED, get_connection, run_scan,
             test_setup,
         },
     };
@@ -208,7 +206,7 @@ mod tests {
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
         let (domain, address) =
-            get_domain(&mut conn, TEST_ELECTION_HASH, 2 /* question index */).await?;
+            get_domain(&mut conn).await?;
         tracing::info!("Sending ballot to {}", address);
         let ballot = encrypt_ballot_data(
             &Network::MainNetwork,
@@ -221,7 +219,7 @@ mod tests {
             OsRng,
         )
         .await?;
-        let spk = derive_spending_key(&Network::MainNetwork, TEST_ELECTION_SEED, 2).anyhow()?;
+        let spk = derive_spending_key(&Network::MainNetwork, TEST_ELECTION_SEED, 0).anyhow()?;
         let fvk = FullViewingKey::from(&spk);
         let ivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
         let n = try_decrypt_ballot(&ivk, ballot.actions[0].clone())?;
@@ -234,7 +232,7 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        let (domain, address) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
+        let (domain, address) = get_domain(&mut conn).await?;
         let ballot_data = encrypt_ballot_data_with_spends(
             &Network::MainNetwork,
             &mut conn,
@@ -276,7 +274,7 @@ mod tests {
         let address = fvk.to_ivk(Scope::External).address_at(0u64);
         let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
         let address = bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes())?;
-        let (domain, _) = get_domain(&mut conn, TEST_ELECTION_HASH, 1).await?;
+        let (domain, _) = get_domain(&mut conn).await?;
         let ballot_data = encrypt_ballot_data_with_spends(
             &Network::MainNetwork,
             &mut conn,

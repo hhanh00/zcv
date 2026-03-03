@@ -29,8 +29,6 @@ pub struct Config {
     pub db_path: Option<String>,
     #[clap(short, long, value_parser)]
     pub lwd_url: Option<String>,
-    #[clap(short = 'e', long, value_parser)]
-    pub hash: Option<String>,
 }
 
 #[tokio::main]
@@ -46,16 +44,13 @@ pub async fn main() -> Result<()> {
         grpc_port,
         db_path,
         lwd_url,
-        hash,
     } = config;
     let cometrpc_port = cometrpc_port.unwrap_or(26657);
     let cometbft_port = cometbft_port.unwrap_or(26658);
     let grpc_port = grpc_port.unwrap_or(9010);
     let db_path = db_path.unwrap_or("vote.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
-    let hash = hash.expect("Election hash must be specified");
 
-    let hash = hex::decode(&hash)?;
     let context = BFTContext::new(&db_path, &lwd_url, cometrpc_port).await?;
     {
         let mut conn = context.connect().await?;
@@ -71,7 +66,7 @@ pub async fn main() -> Result<()> {
             .build()
             .unwrap();
         r.block_on(async move {
-            run_cometbft_app(context, &hash, cometbft_port)
+            run_cometbft_app(context, cometbft_port)
                 .await
                 .unwrap();
             Ok::<_, ZCVError>(())
