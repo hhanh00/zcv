@@ -33,7 +33,7 @@ pub async fn client_delete_election(context: &Context) -> Result<()> {
     Ok(())
 }
 
-pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr: &PR, context: &Context) -> Result<()> {
+pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_accounts: Vec<u32>, pr: &PR, context: &Context) -> Result<()> {
     let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
     let mut client = connect(&context.lwd_url).await?;
@@ -42,7 +42,7 @@ pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_account: u32, pr:
         &mut conn,
         &mut client,
         &hash,
-        id_account,
+        &id_accounts,
         pr,
     )
     .await?;

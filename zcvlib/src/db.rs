@@ -187,11 +187,11 @@ pub async fn set_account_seed(
     Ok(())
 }
 
-pub async fn get_account_address(
+pub async fn get_account_sk(
     network: &Network,
     conn: &mut SqliteConnection,
     id_account: u32,
-) -> ZCVResult<String> {
+) -> ZCVResult<SpendingKey> {
     let (seed, aindex): (String, u32) =
         query_as("SELECT seed, aindex FROM accounts WHERE id_account = ?1")
             .bind(id_account)
@@ -199,6 +199,15 @@ pub async fn get_account_address(
             .await
             .context("get_account_address")?;
     let sk = derive_spending_key(network, &seed, aindex)?;
+    Ok(sk)
+}
+
+pub async fn get_account_address(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    id_account: u32,
+) -> ZCVResult<String> {
+    let sk = get_account_sk(network, conn, id_account).await?;
     let fvk = FullViewingKey::from(&sk);
     let address = fvk.address_at(0u64, Scope::External);
     let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
@@ -479,26 +488,26 @@ pub async fn store_nf_cmx(
 ) -> ZCVResult<()> {
     query(
         "INSERT INTO vc_nfs(nf) VALUES (?1)
-        ON CONFLICT DO NOTHING")
+        ON CONFLICT DO NOTHING",
+    )
     .bind(nullifier)
     .execute(&mut *conn)
     .await?;
     query(
         "INSERT INTO vc_cmxs(cmx) VALUES (?1)
-        ON CONFLICT DO NOTHING")
+        ON CONFLICT DO NOTHING",
+    )
     .bind(cmx)
     .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
-pub async fn store_cmx(
-    conn: &mut SqliteConnection,
-    cmx: &[u8],
-) -> ZCVResult<()> {
+pub async fn store_cmx(conn: &mut SqliteConnection, cmx: &[u8]) -> ZCVResult<()> {
     query(
         "INSERT INTO vc_cmxs(cmx) VALUES (?1)
-        ON CONFLICT DO NOTHING")
+        ON CONFLICT DO NOTHING",
+    )
     .bind(cmx)
     .execute(&mut *conn)
     .await?;

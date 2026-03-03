@@ -48,7 +48,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     conn: &mut SqliteConnection,
     client: &mut Client,
     hash: &[u8],
-    id_account: u32,
+    id_accounts: &[u32],
     pr: &PR,
 ) -> ZCVResult<()> {
     let (start, end, height): (u32, u32, u32) =
@@ -67,11 +67,12 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
     let domains = get_domains(&mut db_tx, hash).await?;
 
-    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
-    let ivks = [
-        (0, PreparedIncomingViewingKey::new(&eivk)),
-        (1, PreparedIncomingViewingKey::new(&iivk)),
-    ];
+    let mut ivks = vec![];
+    for id_account in id_accounts {
+        let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
+        ivks.push((*id_account, 0, fvk.clone(), PreparedIncomingViewingKey::new(&eivk)));
+        ivks.push((*id_account, 1, fvk.clone(), PreparedIncomingViewingKey::new(&iivk)));
+    }
 
     let mut nfs: HashSet<[u8; 32]> = HashSet::new();
 
@@ -125,7 +126,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
                 );
 
                 let domain = OrchardDomain::for_compact_action(&act);
-                for (scope, pivk) in ivks.iter() {
+                for (id_account, scope, fvk, pivk) in ivks.iter() {
                     if let Some((note, _)) = try_compact_note_decryption(&domain, pivk, &act) {
                         info!("Found note at {} for {} zats", height, note.value().inner());
 
@@ -133,8 +134,8 @@ pub async fn scan_blocks<PR: ProgressReporter>(
                             store_received_note(
                                 &mut db_tx,
                                 *domain,
-                                id_account,
-                                &fvk,
+                                *id_account,
+                                fvk,
                                 &note,
                                 &[], // memos are not used prior to voting
                                 height,
@@ -146,7 +147,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
                         }
 
                         // track new note nullifier
-                        let nf = note.nullifier(&fvk).to_bytes();
+                        let nf = note.nullifier(fvk).to_bytes();
                         nfs.insert(nf);
                     }
                 }

@@ -106,7 +106,7 @@ pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
         conn,
         &mut client,
         TEST_ELECTION_HASH,
-        0,
+        &[0],
         &(),
     )
     .await?;
