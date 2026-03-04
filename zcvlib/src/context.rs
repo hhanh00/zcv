@@ -44,6 +44,7 @@ pub struct BFTContext {
     pub context: Context,
     pub cometrpc_port: u16,
     pub grpc_port: u16,
+    pub skip_validation: bool,
 }
 
 impl BFTContext {
@@ -55,13 +56,14 @@ impl BFTContext {
         let _ = tracing::subscriber::set_global_default(subscriber);
     }
 
-    pub async fn new(db_path: &str, lwd_url: &str, comet_rpcport: u16) -> ZCVResult<BFTContext> {
+    pub async fn new(db_path: &str, lwd_url: &str, comet_rpcport: u16, skip_validation: bool) -> ZCVResult<BFTContext> {
         Self::init_logger();
         let context = Context::new(db_path, lwd_url, "").await?;
         Ok(BFTContext {
             context,
             cometrpc_port: comet_rpcport,
             grpc_port: 0,
+            skip_validation,
         })
     }
 

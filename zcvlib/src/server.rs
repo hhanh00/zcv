@@ -8,6 +8,7 @@ use crate::{
     error::IntoAnyhow,
     pod::ElectionPropsPub,
     tiu,
+    vote::VK,
     vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
 use anyhow::{Context, anyhow};
@@ -44,8 +45,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool) -> ZCVResult<Self> {
-        let server = ServerState::new(pool).await?;
+    pub async fn new(pool: SqlitePool, skip_validation: bool) -> ZCVResult<Self> {
+        let server = ServerState::new(pool, skip_validation).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -56,11 +57,12 @@ pub struct ServerState {
     pub pool: SqlitePool,
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
+    pub skip_validation: bool,
     pub check_witnesses_cache: HashMap<[u8; 32], bool>,
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool) -> ZCVResult<Self> {
+    pub async fn new(pool: SqlitePool, skip_validation: bool) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
         let (started,): (bool,) = query_as("SELECT started FROM v_state WHERE id = 0")
             .fetch_one(&mut *conn)
@@ -71,6 +73,7 @@ impl ServerState {
             pool,
             started,
             election: None,
+            skip_validation,
             check_witnesses_cache: HashMap::new(),
         })
     }
@@ -105,8 +108,9 @@ impl Application for Server {
                     let hash = ballot.data.sighash()?;
                     // Fail on inter block double spend (but passes on intra block
                     // duplicate because it checks against the db)
-                    let mut state = self.state.lock().await;
-                    state.check_ballot(&mut conn, ballot).await?;
+                    let state = self.state.lock().await;
+                    let election = state.election.as_ref().ok_or(anyhow!("Election not set"))?;
+                    state.check_ballot(&mut conn, election, ballot).await?;
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
@@ -200,16 +204,21 @@ impl Application for Server {
         // Reject ill formed proposals
         let rt = tokio::runtime::Runtime::new().unwrap();
         let res = rt.block_on(async move {
-            let mut state = self.state.lock().await;
+            let state = self.state.lock().await;
             let mut conn = state.pool.acquire().await?;
+            let election = state.election.as_ref();
             // Check everything (do the same thing as finalize_block) but do not commit
             let mut db_tx = conn.begin().await?;
             for (itx, mut tx) in txs.into_iter().enumerate() {
                 let msg = VoteMessage::decode(&mut tx)?;
                 if let Some(TypeOneof::Ballot(ballot)) = msg.type_oneof {
                     let ballot = from_protobuf(&ballot).anyhow()?;
-                    state.check_witnesses(&ballot)?;
-                    store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
+                    if let Some(election) = election {
+                        state.check_witnesses(election, &ballot)?;
+                        store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
+                    } else {
+                        anyhow::bail!("No election set");
+                    }
                 }
             }
             db_tx.rollback().await?;
@@ -238,9 +247,7 @@ impl Application for Server {
                 let mut validator_updates = vec![];
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
-                let apphash = get_apphash(&mut db_tx)
-                    .await?
-                    .unwrap_or_default();
+                let apphash = get_apphash(&mut db_tx).await?.unwrap_or_default();
                 let mut hasher = Params::new()
                     .personal(b"ZCVote___AppHash")
                     .hash_length(32)
@@ -268,15 +275,14 @@ impl Application for Server {
                                 let election =
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let h = election.end + height as u32;
-                                state.check_witnesses(&ballot)?;
+                                state.check_witnesses(election, &ballot)?;
                                 // This will catch and fail on a double spend because of the UNIQUE dnf
                                 let id_ballot =
                                     store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
                                 if id_ballot.is_none() {
                                     tracing::info!("Tx already inserted {}", hex::encode(&hash));
                                 }
-                                store_election_height_inc_position(&mut db_tx, h)
-                                    .await?;
+                                store_election_height_inc_position(&mut db_tx, h).await?;
                             }
                             TypeOneof::Start(_) => {
                                 state.started = true;
@@ -314,9 +320,7 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, &apphash)
-                    .await
-                    .unwrap();
+                store_apphash(&mut db_tx, &apphash).await.unwrap();
 
                 db_tx.commit().await?;
                 state.clear_check_witnesses();
@@ -344,7 +348,15 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
 impl ServerState {
     pub fn clear_check_witnesses(&mut self) {}
 
-    pub fn check_witnesses(&mut self, _ballot: &orchard::vote::Ballot) -> ZCVResult<()> {
+    pub fn check_witnesses(
+        &self,
+        e: &ElectionPropsPub,
+        ballot: &orchard::vote::Ballot,
+    ) -> ZCVResult<()> {
+        if !self.skip_validation {
+            orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
+            tracing::info!("Witness checked");
+        }
         // TODO
         // This is an expensive operation, therefore we should consider
         // caching the result
@@ -352,11 +364,12 @@ impl ServerState {
     }
 
     pub async fn check_ballot(
-        &mut self,
+        &self,
         conn: &mut SqliteConnection,
+        election: &ElectionPropsPub,
         ballot: orchard::vote::Ballot,
     ) -> ZCVResult<()> {
-        self.check_witnesses(&ballot)?;
+        self.check_witnesses(election, &ballot)?;
         for a in ballot.data.actions {
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
             if exists {
@@ -425,11 +438,11 @@ pub async fn run_cometbft_app(
     context: Arc<tokio::sync::Mutex<BFTContext>>,
     port: u16,
 ) -> ZCVResult<()> {
-    let pool = {
+    let (pool, skip_validation) = {
         let c = context.lock().await;
-        c.context.pool.clone()
+        (c.context.pool.clone(), c.skip_validation)
     };
-    let app = Server::new(pool).await?;
+    let app = Server::new(pool, skip_validation).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

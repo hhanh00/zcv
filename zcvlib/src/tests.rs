@@ -50,7 +50,7 @@ pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
     }));
 
 pub async fn test_context() -> Result<BFTContext> {
-    let ctx = BFTContext::new("vote.db", "", 0).await?;
+    let ctx = BFTContext::new("vote.db", "", 0, false).await?;
     Ok(ctx)
 }
 

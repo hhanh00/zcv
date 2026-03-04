@@ -30,4 +30,15 @@ mutation {
   vote(idAccount: 1 amount: "0.01"
   voteContent: "000100")
 }'
+
+echo "Scan"
+gq http://127.0.0.1:8000/graphql \
+-q 'mutation {scanNotes(idAccounts: [1])}'
+
+echo "Balance"
+BALANCE=$(gq -l --format=json http://127.0.0.1:8000/graphql \
+-q 'query {getBalance(idAccount: 1)}' \
+| jq -r .data.getBalance)
+printf '<%s>\n' "$BALANCE"
+[[ $BALANCE == "0.00169078" ]]
 popd
