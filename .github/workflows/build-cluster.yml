@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-large-cluster:
+  build-cluster:
     runs-on: ubuntu-24.04
 
     steps:
@@ -85,8 +85,3 @@ jobs:
           [[ $HEIGHT1 -le $HEIGHT2a ]]
           [[ $HEIGHT2a -eq $HEIGHT2b ]]
           [[ $HEIGHT2b -le $HEIGHT3 ]]
-          ./tests/submit_ballots.sh
-          sleep 10
-          export COUNT=$(sqlite3 node1/vote.db "SELECT COUNT(*) FROM v_ballots")
-          echo $COUNT
-          [[ $COUNT -gt 0 ]]

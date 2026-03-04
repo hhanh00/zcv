@@ -29,6 +29,8 @@ pub struct Config {
     pub db_path: Option<String>,
     #[clap(short, long, value_parser)]
     pub lwd_url: Option<String>,
+    #[clap(short, long)]
+    pub unsafe_skip_validation: bool,
 }
 
 #[tokio::main]
@@ -44,6 +46,7 @@ pub async fn main() -> Result<()> {
         grpc_port,
         db_path,
         lwd_url,
+        unsafe_skip_validation,
     } = config;
     let cometrpc_port = cometrpc_port.unwrap_or(26657);
     let cometbft_port = cometbft_port.unwrap_or(26658);
@@ -51,7 +54,7 @@ pub async fn main() -> Result<()> {
     let db_path = db_path.unwrap_or("vote.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
 
-    let context = BFTContext::new(&db_path, &lwd_url, cometrpc_port).await?;
+    let context = BFTContext::new(&db_path, &lwd_url, cometrpc_port, unsafe_skip_validation).await?;
     {
         let mut conn = context.connect().await?;
         create_schema(&mut conn).await?;
