@@ -14,11 +14,15 @@ use crate::{
 use anyhow::{Context, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
+use byteorder::{LE, ReadBytesExt};
+use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
+use orchard::tree::MerkleHashOrchard;
 use prost::Message;
 use serde_json::{Value, json};
 use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
 use std::{
     collections::{HashMap, HashSet},
+    io::{Cursor, Read},
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
@@ -34,6 +38,7 @@ use tendermint_proto::{
     crypto::{PublicKey, public_key::Sum},
 };
 use tokio::{runtime::Runtime, sync::Mutex};
+use zcash_encoding::Vector;
 
 pub mod rpc;
 
@@ -59,6 +64,8 @@ pub struct ServerState {
     pub election: Option<ElectionPropsPub>,
     pub skip_validation: bool,
     pub check_witnesses_cache: HashMap<[u8; 32], bool>,
+    pub nf_root: MerkleHashOrchard,
+    pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
 }
 
 impl ServerState {
@@ -75,6 +82,8 @@ impl ServerState {
             election: None,
             skip_validation,
             check_witnesses_cache: HashMap::new(),
+            nf_root: MerkleHashOrchard::empty_leaf(),
+            cmx_tree: Frontier::empty(),
         })
     }
 }
@@ -263,10 +272,35 @@ impl Application for Server {
                         let m = msg.type_oneof.expect("VoteMessage must have content");
                         match m {
                             TypeOneof::SetElection(election) => {
-                                let election: ElectionPropsPub =
-                                    serde_json::from_str(&election.election)?;
+                                let crate::vote_rpc::Election {
+                                    election,
+                                    nf_root,
+                                    cmx_tree_state,
+                                } = election;
+                                tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
+                                let nf_root =
+                                    MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
+                                let mut c = Cursor::new(cmx_tree_state);
+                                let p = c.read_u64::<LE>()?;
+                                let p: Position = p.into();
+                                let mut l = [0u8; 32];
+                                c.read_exact(&mut l)?;
+                                let l = MerkleHashOrchard::from_bytes(&l).unwrap();
+                                let o = Vector::read(c, |c| {
+                                    let mut l = [0u8; 32];
+                                    c.read_exact(&mut l)?;
+                                    Ok(MerkleHashOrchard::from_bytes(&l).unwrap())
+                                })?;
+                                let cmx_tree =
+                                    Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
+                                let cmx_root = cmx_tree.root();
+                                tracing::info!("CMX ROOT: {}", hex::encode(cmx_root.to_bytes()));
+
+                                let election: ElectionPropsPub = serde_json::from_str(&election)?;
                                 store_election(&mut db_tx, &election).await?;
                                 state.election = Some(election);
+                                state.nf_root = nf_root;
+                                state.cmx_tree = cmx_tree;
                             }
                             TypeOneof::Ballot(ballot) => {
                                 tracing::info!("Incoming ballot");
@@ -275,6 +309,14 @@ impl Application for Server {
                                 let election =
                                     state.election.as_ref().ok_or(anyhow!("Election not set"))?;
                                 let h = election.end + height as u32;
+                                tracing::info!(
+                                    "Expected NF ROOT: {}",
+                                    hex::encode(&state.nf_root.to_bytes())
+                                );
+                                tracing::info!(
+                                    "Expected CMX ROOT: {}",
+                                    hex::encode(&state.cmx_tree.root().to_bytes())
+                                );
                                 state.check_witnesses(election, &ballot)?;
                                 // This will catch and fail on a double spend because of the UNIQUE dnf
                                 let id_ballot =
@@ -371,6 +413,7 @@ impl ServerState {
     ) -> ZCVResult<()> {
         self.check_witnesses(election, &ballot)?;
         for a in ballot.data.actions {
+            tracing::info!("Action NF: {}", hex::encode(&a.nf));
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
             if exists {
                 tracing::info!("Duplicate tx inter block (skip from proposal)");

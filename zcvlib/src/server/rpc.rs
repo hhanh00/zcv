@@ -8,10 +8,16 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, async_trait};
 
 use crate::{
-    ZCVError, ZCVResult, context::BFTContext, error::IntoAnyhow, server::submit_tx, vote_rpc::{
+    ZCVError, ZCVResult,
+    context::BFTContext,
+    error::IntoAnyhow,
+    lwd::initial_scan,
+    pod::ElectionPropsPub,
+    server::submit_tx,
+    vote_rpc::{
         Ballot, Election, Empty, Hash, Validator, VoteHeight, VoteMessage, VoteRange,
         vote_message::TypeOneof, vote_streamer_server::VoteStreamer,
-    }
+    },
 };
 
 pub struct ZCVServer {
@@ -25,14 +31,18 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
-            let (election,): (String, ) = query_as(
+            let (election,): (String,) = query_as(
                 "SELECT data FROM v_elections
                 WHERE hash = ?1",
             )
             .bind(&request.hash)
             .fetch_one(&mut *conn)
-            .await.context("get_election")?;
-            let election = Election { election };
+            .await
+            .context("get_election")?;
+            let election = Election {
+                election,
+                ..Default::default()
+            };
             Ok::<_, anyhow::Error>(Response::new(election))
         };
         res.await.map_err(to_tonic)
@@ -41,6 +51,18 @@ impl VoteStreamer for ZCVServer {
     async fn set_election(&self, request: Request<Election>) -> Result<Response<Hash>, Status> {
         let res = async move {
             let election = request.into_inner();
+            let e: ElectionPropsPub = serde_json::from_str(&election.election).unwrap();
+            let election = {
+                let c = self.context.lock().await;
+                let mut client = crate::lwd::connect(&c.context.lwd_url).await?;
+                let (nf_root, cmx_tree_state) = initial_scan(&mut client, e.start, e.end).await?;
+                Election {
+                    nf_root,
+                    cmx_tree_state,
+                    ..election
+                }
+            };
+
             let m = VoteMessage {
                 type_oneof: Some(TypeOneof::SetElection(election)),
             };
@@ -88,7 +110,8 @@ impl VoteStreamer for ZCVServer {
                 WHERE e.id_election = 0",
             )
             .fetch_one(&mut *conn)
-            .await.context("get latest vote height")?;
+            .await
+            .context("get latest vote height")?;
             Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash }))
         };
         res.await.map_err(to_tonic)
@@ -108,7 +131,7 @@ impl VoteStreamer for ZCVServer {
                 c.context.pool.acquire().await?.detach()
             };
             let (tx, rx) = mpsc::channel::<Result<Ballot, Status>>(1);
-            let handler = move |b| -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>>{
+            let handler = move |b| -> Pin<Box<dyn Future<Output = ZCVResult<()>> + Send>> {
                 let tx2 = tx.clone();
                 Box::pin(async move {
                     let _ = tx2.send(Ok(b)).await;

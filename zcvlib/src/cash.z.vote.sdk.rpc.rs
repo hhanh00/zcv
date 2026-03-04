@@ -31,6 +31,10 @@ pub struct Validator {
 pub struct Election {
     #[prost(string, tag = "1")]
     pub election: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub nf_root: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub cmx_tree_state: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct VoteHeight {

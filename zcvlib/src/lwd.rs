@@ -1,10 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 use crate::{
     ZCVResult,
     api::ProgressReporter,
     db::{
-        derive_spending_key, get_domain, get_ivks, list_unspent_nullifiers, store_ballot_spend, store_cmx, store_election_height_position, store_nf_cmx, store_received_note, store_result, store_spend
+        derive_spending_key, get_domain, get_ivks, list_unspent_nullifiers, store_ballot_spend,
+        store_cmx, store_election_height_position, store_nf_cmx, store_received_note, store_result,
+        store_spend,
     },
     error::IntoAnyhow,
     rpc::{
@@ -12,14 +17,18 @@ use crate::{
         compact_tx_streamer_client::CompactTxStreamerClient,
     },
     tiu,
+    vote::expand_into_ranges,
     vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
+use byteorder::{LE, WriteBytesExt};
 use ff::PrimeField;
+use incrementalmerkletree::frontier::Frontier;
 use orchard::{
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
     note::{ExtractedNoteCommitment, Nullifier},
     note_encryption::{CompactAction, OrchardDomain},
-    vote::try_decrypt_ballot,
+    tree::MerkleHashOrchard,
+    vote::{calculate_merkle_paths, try_decrypt_ballot},
 };
 use pasta_curves::Fp;
 use sqlx::{Acquire, SqliteConnection, query, query_as};
@@ -28,6 +37,7 @@ use tonic::{
     transport::{Channel, Endpoint},
 };
 use tracing::info;
+use zcash_encoding::Vector;
 use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
 use zcash_protocol::consensus::Network;
 
@@ -38,6 +48,51 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     let ep = Endpoint::from_shared(url.to_string())?;
     let client = CompactTxStreamerClient::connect(ep).await?;
     Ok(client)
+}
+
+pub async fn initial_scan(
+    client: &mut Client,
+    start: u32,
+    end: u32,
+) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+    let mut blocks = client
+        .get_block_range(Request::new(BlockRange {
+            start: Some(BlockId {
+                height: start as u64,
+                hash: vec![],
+            }),
+            end: Some(BlockId {
+                height: end as u64,
+                hash: vec![],
+            }),
+            pool_types: vec![PoolType::Orchard.into()],
+        }))
+        .await?
+        .into_inner();
+
+    let mut nfs = vec![];
+    let mut cmx_tree = Frontier::<MerkleHashOrchard, 32>::empty();
+    while let Some(block) = blocks.message().await? {
+        for tx in block.vtx {
+            for a in tx.actions {
+                let CompactOrchardAction { nullifier, cmx, .. } = a;
+                let nf = Fp::from_repr(tiu!(nullifier)).unwrap();
+                nfs.push(nf);
+                cmx_tree.append(MerkleHashOrchard::from_bytes(&tiu!(cmx)).unwrap());
+            }
+        }
+    }
+    nfs.sort();
+    let nfs = expand_into_ranges(nfs);
+    let (root, _) = calculate_merkle_paths(0, &[], &nfs);
+    let nf_root = root.to_repr().to_vec();
+    let (p, l, o) = cmx_tree.take().unwrap().into_parts();
+    let mut cmx_tree_state = vec![];
+    cmx_tree_state.write_u64::<LE>(u64::from(p)).anyhow()?;
+    cmx_tree_state.write_all(&l.to_bytes()).anyhow()?;
+    Vector::write(&mut cmx_tree_state, &o, |w, h| w.write_all(&h.to_bytes())).anyhow()?;
+
+    Ok((nf_root, cmx_tree_state))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -66,8 +121,18 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     let mut ivks = vec![];
     for id_account in id_accounts {
         let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
-        ivks.push((*id_account, 0, fvk.clone(), PreparedIncomingViewingKey::new(&eivk)));
-        ivks.push((*id_account, 1, fvk.clone(), PreparedIncomingViewingKey::new(&iivk)));
+        ivks.push((
+            *id_account,
+            0,
+            fvk.clone(),
+            PreparedIncomingViewingKey::new(&eivk),
+        ));
+        ivks.push((
+            *id_account,
+            1,
+            fvk.clone(),
+            PreparedIncomingViewingKey::new(&iivk),
+        ));
     }
 
     let mut nfs: HashSet<[u8; 32]> = HashSet::new();
@@ -75,7 +140,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     let mut blocks = client
         .get_block_range(Request::new(BlockRange {
             start: Some(BlockId {
-                height: (start + 1) as u64,
+                height: start as u64,
                 hash: vec![],
             }),
             end: Some(BlockId {
@@ -121,7 +186,9 @@ pub async fn scan_blocks<PR: ProgressReporter>(
 
                 let orchard_domain = OrchardDomain::for_compact_action(&act);
                 for (id_account, scope, fvk, pivk) in ivks.iter() {
-                    if let Some((note, _)) = try_compact_note_decryption(&orchard_domain, pivk, &act) {
+                    if let Some((note, _)) =
+                        try_compact_note_decryption(&orchard_domain, pivk, &act)
+                    {
                         info!("Found note at {} for {} zats", height, note.value().inner());
 
                         store_received_note(

@@ -60,31 +60,13 @@ pub async fn vote(
     let utxos = list_unspent_notes(conn, id_account).await?;
     for note in utxos.iter() {
         let note_nf = Fp::from_repr(tiu!(note.nf.clone())).unwrap();
+        tracing::info!("Tx input note candidate: {:?}", note_nf);
         if nfs.contains(&note_nf) {
             panic!("Note should not be already spent");
         }
     }
 
-    let mut prev = Fp::zero();
-    let mut nf_ranges = vec![];
-    for r in nfs {
-        // Skip empty ranges when nfs are consecutive
-        // (with statistically negligible odds)
-        if prev < r {
-            // Ranges are inclusive of both ends
-            let a = prev;
-            let b = r - Fp::one();
-
-            nf_ranges.push(a);
-            nf_ranges.push(b);
-        }
-        prev = r + Fp::one();
-    }
-    let a = prev;
-    let b = Fp::one().neg();
-
-    nf_ranges.push(a);
-    nf_ranges.push(b);
+    let nf_ranges = expand_into_ranges(nfs);
 
     let cmxs = query("SELECT cmx FROM vc_cmxs ORDER BY id_cmx")
         .map(|r: SqliteRow| {
@@ -114,6 +96,30 @@ pub async fn vote(
     )?;
 
     Ok(ballot)
+}
+
+pub fn expand_into_ranges(nfs: Vec<Fp>) -> Vec<Fp> {
+    let mut prev = Fp::zero();
+    let mut nf_ranges = vec![];
+    for r in nfs {
+        // Skip empty ranges when nfs are consecutive
+        // (with statistically negligible odds)
+        if prev < r {
+            // Ranges are inclusive of both ends
+            let a = prev;
+            let b = r - Fp::one();
+
+            nf_ranges.push(a);
+            nf_ranges.push(b);
+        }
+        prev = r + Fp::one();
+    }
+    let a = prev;
+    let b = Fp::one().neg();
+
+    nf_ranges.push(a);
+    nf_ranges.push(b);
+    nf_ranges
 }
 
 pub async fn mint(
