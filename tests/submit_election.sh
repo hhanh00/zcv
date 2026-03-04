@@ -1,3 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
-grpcurl -d '{"election": "{\"start\":3155000,\"end\":3169000,\"need_sig\":true,\"name\":\"Test Election\",\"questions\":[{\"title\":\"Q1. What is your favorite color?\",\"subtitle\":\"\",\"index\":0,\"address\":\"zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Red\",\"Green\",\"Blue\"]}]},{\"title\":\"Q2. Is the earth flat?\",\"subtitle\":\"\",\"index\":1,\"address\":\"zcv1panzgdd6kyygjqtykys6snl9sy59tdnhrpmezdamlt0umxcgs3z4mrndy7eajpkpxerry7tvccv\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Yes\",\"No\"]}]},{\"title\":\"Q3. Do you like pizza?\",\"subtitle\":\"\",\"index\":2,\"address\":\"zcv1yk6u9k8t6087ru4vsjfzepfw9yhhgpnua27r74wmqyqetn35663c62tnfzw46vqqtu2g54jwqt8\",\"choices\":[{\"title\":null,\"subtitle\":null,\"answers\":[\"Yes\",\"No\"]}]}]}"}' --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
+yq eval -o json "$1.yml" > "$1.json"
+ELECTION_SEED="stool rich together paddle together pool raccoon promote attitude peasant latin concert"
+./target/release/creator --election-file "$1.json" --seed "$ELECTION_SEED" --output-file "$1-pub.json"
+ELECTION=$(cat "$1-pub.json")
+ELECTION_REQ=$(jq -n --arg election "$ELECTION" '{"election": $election}')
+echo $ELECTION_REQ
+
+grpcurl -d "$ELECTION_REQ" --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection

@@ -8,47 +8,14 @@ const storeElection = gql`
     storeElection(electionJson: $election)
   }
 `;
-const election = {
-  start: 3155000,
-  end: 3169000,
-  need_sig: true,
-  name: "Test Election",
-  questions: [
-    {
-      title: "Q1. What is your favorite color?",
-      subtitle: "",
-      index: 0,
-      address:
-        "zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y",
-      choices: [
-        { title: null, subtitle: null, answers: ["Red", "Green", "Blue"] },
-      ],
-    },
-    {
-      title: "Q2. Is the earth flat?",
-      subtitle: "",
-      index: 1,
-      address:
-        "zcv1panzgdd6kyygjqtykys6snl9sy59tdnhrpmezdamlt0umxcgs3z4mrndy7eajpkpxerry7tvccv",
-      choices: [{ title: null, subtitle: null, answers: ["Yes", "No"] }],
-    },
-    {
-      title: "Q3. Do you like pizza?",
-      subtitle: "",
-      index: 2,
-      address:
-        "zcv1yk6u9k8t6087ru4vsjfzepfw9yhhgpnua27r74wmqyqetn35663c62tnfzw46vqqtu2g54jwqt8",
-      choices: [{ title: null, subtitle: null, answers: ["Yes", "No"] }],
-    },
-  ],
-};
+const election = {"start":3168000,"end":3169000,"need_sig":true,"name":"Test Election","questions":[{"title":"Q1. What is your favorite color?","subtitle":"","answers":["Red","Green","Blue"]},{"title":"Q2. Is the earth flat?","subtitle":"","answers":["Yes","No"]},{"title":"Q3. Do you like pizza?","subtitle":"","answers":["Yes","No"]}],"address":"zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y","domain":"31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437"};
 const rep = await client.request(storeElection, {
   election: JSON.stringify(election),
 });
 const hash = rep.storeElection;
 console.log(hash)
 
-const nVoters = 10;
+const nVoters = 5;
 for (var i = 1; i <= nVoters; i++) {
   const seed = bip39.generateMnemonic(256);
   const storeSeed = gql`
@@ -62,12 +29,11 @@ for (var i = 1; i <= nVoters; i++) {
   });
 
   const mint = gql`
-    mutation mint($hash: String!, $account: Int!) {
-      mint(idAccount: $account, amount: 10000.5, idxQuestion: 1, hash: $hash)
+    mutation mint($account: Int!) {
+      mint(idAccount: $account, amount: 10000.5)
     }
   `;
   await client.request(mint, {
-    hash,
     account: i,
   });
 }
@@ -77,30 +43,34 @@ const sleep = (ms: number) => {
 };
 
 await sleep(5000);
-const scan = gql`
-  mutation scan($hash: String!, $accounts: [Int!]!) {
-    scanNotes(hash: $hash, idAccounts: [])
-    scanBallots(hash: $hash, idAccounts: $accounts)
+const scan1 = gql`
+  mutation scan($accounts: [Int!]!) {
+    scanNotes(idAccounts: $accounts)
   }
 `;
-await client.request(scan, {
-  hash,
+await client.request(scan1, {
+  accounts: Array.from({ length: nVoters }, (_, i) => i + 1),
+});
+
+await sleep(1000);
+const scan2 = gql`
+  mutation scan($accounts: [Int!]!) {
+    scanBallots(idAccounts: $accounts)
+  }
+`;
+await client.request(scan2, {
   accounts: Array.from({ length: nVoters }, (_, i) => i + 1),
 });
 
 const vote = gql`
   mutation vote(
-    $hash: String!
     $account: Int!
     $amount: BigDecimal!
-    $question: Int!
     $answer: String!
   ) {
     vote(
       idAccount: $account
       amount: $amount
-      hash: $hash
-      idxQuestion: $question
       voteContent: $answer
     )
   }
@@ -122,11 +92,10 @@ for (var i = 1; i <= nVoters; i++) {
     .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
     .join("");
 
+  console.log(answer);
   const vars = {
     account: i,
     amount: value,
-    hash,
-    question: 1,
     answer,
   };
   await client.request(vote, vars);
@@ -135,14 +104,12 @@ for (var i = 1; i <= nVoters; i++) {
 await sleep(5000);
 await client.request(
   gql`
-    mutation ($hash: String!) {
+    mutation {
       decodeBallots(
         electionSeed: "stool rich together paddle together pool raccoon promote attitude peasant latin concert"
-        hash: $hash
       )
     }
   `,
-  { hash },
 );
 
 await sleep(1000);
@@ -151,20 +118,17 @@ const res = await client.request(
     mutation {
       collectResults {
         idxQuestion
-        idxSubQuestion
         idxAnswer
         votes
       }
     }
   `,
-  { hash },
 );
 console.log(res.collectResults);
 console.log(scores);
 
 for (var r of res.collectResults) {
-  const { idxQuestion, idxSubQuestion, idxAnswer, votes } = r;
-  assert.equal(idxQuestion, 1);
-  const s = scores[idxSubQuestion][idxAnswer - 1];
+  const { idxQuestion, idxAnswer, votes } = r;
+  const s = scores[idxQuestion][idxAnswer - 1];
   assert.equal(s, parseInt(votes));
 }

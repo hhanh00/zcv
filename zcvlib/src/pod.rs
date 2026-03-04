@@ -1,6 +1,5 @@
 use bech32::{Bech32m, Hrp};
 use bincode::Encode;
-use blake2b_simd::Params;
 use ff::PrimeField;
 use orchard::{
     Note,
@@ -11,10 +10,13 @@ use orchard::{
 };
 use pasta_curves::Fp;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::{ZCVResult, db::derive_spending_key, error::IntoAnyhow, tiu};
 
 pub const ZCV_MNEMONIC_DOMAIN: &[u8] = b"ZCVote__Personal";
+
+// TODO: Remove question level
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ElectionProps {
@@ -26,48 +28,25 @@ pub struct ElectionProps {
     pub questions: Vec<QuestionProp>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct QuestionProp {
     pub title: String,
-    pub subtitle: Option<String>,
-    pub choices: Vec<ChoiceProp>,
-}
-
-#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
-pub struct ChoiceProp {
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
+    #[serde(default)]
+    pub subtitle: String,
     pub answers: Vec<String>,
 }
 
+#[serde_as]
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct ElectionPropsPub {
     pub start: u32,
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
-    pub questions: Vec<QuestionPropPub>,
-}
-
-#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
-pub struct QuestionPropPub {
-    pub title: String,
-    pub subtitle: String,
-    pub index: usize,
+    pub questions: Vec<QuestionProp>,
     pub address: String,
-    pub choices: Vec<ChoiceProp>,
-}
-
-#[derive(Clone, Encode, Serialize, Deserialize, Debug)]
-pub struct QuestionPropHashable {
-    pub start: u32,
-    pub end: u32,
-    pub need_sig: bool,
-    pub name: String,
-    pub title: String,
-    pub subtitle: String,
-    pub index: usize,
-    pub choices: Vec<ChoiceProp>,
+    #[serde_as(as = "serde_with::hex::Hex")]
+    pub domain: Vec<u8>,
 }
 
 pub const ZCV_HRP: &str = "zcv";
@@ -84,90 +63,55 @@ impl ElectionProps {
         } = self;
         let hrp = Hrp::parse(ZCV_HRP).anyhow()?;
 
-        let mut questions_pub = vec![];
-        for (iq, q) in questions.into_iter().enumerate() {
-            let QuestionProp {
-                title,
-                subtitle,
-                choices,
-            } = q;
+        let sk = derive_spending_key(
+            &zcash_protocol::consensus::Network::MainNetwork,
+            secret_seed,
+            0,
+        )
+        .anyhow()?;
 
-            let q = QuestionPropHashable {
-                start,
-                end,
-                need_sig,
-                name: name.clone(),
-                title,
-                subtitle: subtitle.unwrap_or_default(),
-                index: iq,
-                choices: choices.clone(),
-            };
-            let sk = derive_spending_key(
-                &zcash_protocol::consensus::Network::MainNetwork,
-                secret_seed,
-                iq as u32,
-            )
-            .anyhow()?;
+        let vk = FullViewingKey::from(&sk);
+        let address = vk.address_at(0u64, Scope::External);
+        let address =
+            bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
 
-            let vk = FullViewingKey::from(&sk);
-            let address = vk.address_at(0u64, Scope::External);
-            let address =
-                bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
+        let eph = ElectionPropsHashable {
+            start,
+            end,
+            need_sig,
+            name: name.clone(),
+            questions: questions.clone(),
+        };
+        let domain = eph.calculate_domain()?.to_repr().to_vec();
 
-            questions_pub.push(QuestionPropPub {
-                title: q.title,
-                subtitle: q.subtitle,
-                index: iq,
-                address,
-                choices,
-            });
-        }
-        Ok(ElectionPropsPub {
+        let e = ElectionPropsPub {
             start,
             end,
             need_sig,
             name,
-            questions: questions_pub,
-        })
+            questions,
+            address,
+            domain,
+        };
+        tracing::info!("{}", serde_json::to_string(&e).unwrap());
+        Ok(e)
     }
 }
 
-impl QuestionPropHashable {
+#[derive(Clone, Encode, Debug)]
+pub struct ElectionPropsHashable {
+    pub start: u32,
+    pub end: u32,
+    pub need_sig: bool,
+    pub name: String,
+    pub questions: Vec<QuestionProp>,
+}
+
+impl ElectionPropsHashable {
     pub fn calculate_domain(&self) -> ZCVResult<Fp> {
         let m = bincode::encode_to_vec(self, bincode::config::standard()).anyhow()?;
         let d = calculate_domain(&m);
         Ok(d)
-    }
-}
-
-impl QuestionPropPub {
-    pub fn domain(&self, e: &ElectionPropsPub) -> ZCVResult<Fp> {
-        let q = QuestionPropHashable {
-            start: e.start,
-            end: e.end,
-            need_sig: e.need_sig,
-            name: e.name.clone(),
-            title: self.title.clone(),
-            subtitle: self.subtitle.clone(),
-            index: self.index,
-            choices: self.choices.clone(),
-        };
-        q.calculate_domain()
-    }
-}
-
-impl ElectionPropsPub {
-    pub fn hash(&self) -> ZCVResult<[u8; 32]> {
-        let mut hasher = Params::new()
-            .personal(b"ZcashElectionHsh")
-            .hash_length(32)
-            .to_state();
-        for q in self.questions.iter() {
-            let domain = q.domain(self)?;
-            hasher.update(domain.to_repr().as_slice());
-        }
-        let h: [u8; 32] = tiu!(hasher.finalize().as_bytes());
-        Ok(h)
     }
 }
 
@@ -221,7 +165,8 @@ mod tests {
         let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
         let epub = e.build("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about").unwrap();
 
-        let hash = epub.hash().unwrap();
-        assert_eq!(hash, TEST_ELECTION_HASH);
+        let domain = &epub.domain;
+        println!("{}", hex::encode(domain));
+        assert_eq!(domain, TEST_ELECTION_HASH);
     }
 }

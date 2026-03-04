@@ -84,9 +84,8 @@ impl VoteStreamer for ZCVServer {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
             let (height, hash): (u32, Vec<u8>) = query_as(
-                "SELECT e.height, e.hash FROM v_elections e JOIN
-                v_state s ON e.hash = s.hash
-                WHERE s.id = 0",
+                "SELECT e.height, s.apphash FROM v_elections e, v_state s
+                WHERE e.id_election = 0",
             )
             .fetch_one(&mut *conn)
             .await.context("get latest vote height")?;

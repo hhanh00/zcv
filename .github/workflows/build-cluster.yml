@@ -53,7 +53,7 @@ jobs:
           (cd node1; vote-cometbft  >/dev/null &)
           echo "Chain should start with one validator"
           sleep 10
-          ./tests/submit_election.sh
+          ./tests/submit_election.sh ./tests/test_election
           sleep 5
           HEIGHT1=$(curl -s localhost:26657/validators | jq -r .result.block_height)
           PK=$(cat node2/config/priv_validator_key.json | jq .pub_key.value)

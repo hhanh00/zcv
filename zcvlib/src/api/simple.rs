@@ -6,7 +6,7 @@ use zcash_protocol::consensus::Network;
 
 use crate::api::ProgressReporter;
 use crate::context::Context;
-use crate::db::{get_domain, get_election, get_election_height};
+use crate::db::{get_election, get_election_height};
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::vote::VoteResultItem;
@@ -24,7 +24,7 @@ pub async fn store_election(election_json: String, context: &Context) -> Result<
     let mut conn = context.connect().await?;
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
     crate::db::store_election(&mut conn, &election).await?;
-    Ok(election.hash()?.to_vec())
+    Ok(election.domain.clone())
 }
 
 pub async fn client_delete_election(context: &Context) -> Result<()> {
@@ -33,15 +33,13 @@ pub async fn client_delete_election(context: &Context) -> Result<()> {
     Ok(())
 }
 
-pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_accounts: Vec<u32>, pr: &PR, context: &Context) -> Result<()> {
-    let hash = hex::decode(&hash)?;
+pub async fn scan_notes<PR: ProgressReporter>(id_accounts: Vec<u32>, pr: &PR, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let mut client = connect(&context.lwd_url).await?;
     crate::lwd::scan_blocks(
         &Network::MainNetwork,
         &mut conn,
         &mut client,
-        &hash,
         &id_accounts,
         pr,
     )
@@ -49,12 +47,11 @@ pub async fn scan_notes<PR: ProgressReporter>(hash: String, id_accounts: Vec<u32
     Ok(())
 }
 
-pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context) -> Result<()> {
+pub async fn scan_ballots(id_accounts: Vec<u32>, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
-    let hash = hex::decode(&hash)?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
-    let start = get_election_height(&mut conn, &hash).await? + 1;
+    let start = get_election_height(&mut conn).await? + 1;
     let rep = client
         .get_latest_vote_height(Request::new(Empty {}))
         .await?;
@@ -63,7 +60,6 @@ pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context
         &Network::MainNetwork,
         &mut conn,
         &mut client,
-        &hash,
         &id_accounts,
         start,
         end,
@@ -72,12 +68,11 @@ pub async fn scan_ballots(hash: String, id_accounts: Vec<u32>, context: &Context
     Ok(())
 }
 
-pub async fn decode_ballots(hash: String, election_seed: String, context: &Context) -> Result<()> {
+pub async fn decode_ballots(election_seed: String, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
-    let hash = hex::decode(&hash)?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
-    let election = get_election(&mut conn, &hash).await?;
+    let election = get_election(&mut conn).await?;
     let start = election.end;
     let rep = client
         .get_latest_vote_height(Request::new(Empty {}))
@@ -87,7 +82,6 @@ pub async fn decode_ballots(hash: String, election_seed: String, context: &Conte
         &Network::MainNetwork,
         &mut conn,
         &mut client,
-        &hash,
         &election_seed,
         start,
         end,
@@ -103,22 +97,12 @@ pub async fn collect_results(context: &Context) -> Result<Vec<VoteResultItem>> {
 }
 
 pub async fn get_balance(
-    hash: String,
     id_account: u32,
-    idx_question: u32,
     context: &Context,
 ) -> Result<u64> {
     let mut conn = context.connect().await?;
-    let hash = hex::decode(&hash)?;
-    let (domain, _) = get_domain(&mut conn, &hash, idx_question as usize).await?;
-    let balance = crate::balance::get_balance(&mut conn, domain, id_account).await?;
+    let balance = crate::balance::get_balance(&mut conn, id_account).await?;
     Ok(balance)
-}
-
-async fn connect_to_vote_server(context: &Context) -> Result<VoteClient> {
-    let ep = Endpoint::from_shared(context.election_url.clone())?;
-    let client = VoteStreamerClient::connect(ep).await?;
-    Ok(client)
 }
 
 async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
@@ -135,22 +119,17 @@ async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
 }
 
 pub async fn vote(
-    hash: String,
     id_account: u32,
-    idx_question: u32,
     vote_content: String,
     amount: u64,
     context: &Context,
 ) -> Result<()> {
-    let hash = hex::decode(&hash)?;
     let memo = hex::decode(&vote_content)?;
     let mut conn = context.connect().await?;
     let ballot = crate::vote::vote(
         &Network::MainNetwork,
         &mut conn,
-        &hash,
         id_account,
-        idx_question,
         &memo,
         amount,
     )
@@ -160,20 +139,15 @@ pub async fn vote(
 }
 
 pub async fn mint(
-    hash: String,
     id_account: u32,
-    idx_question: u32,
     amount: u64,
     context: &Context,
 ) -> Result<()> {
-    let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
     let ballot = crate::vote::mint(
         &Network::MainNetwork,
         &mut conn,
-        &hash,
         id_account,
-        idx_question,
         amount,
     )
     .await?;
@@ -182,21 +156,16 @@ pub async fn mint(
 }
 
 pub async fn delegate(
-    hash: String,
     id_account: u32,
-    idx_question: u32,
     address: &str,
     amount: u64,
     context: &Context,
 ) -> Result<()> {
-    let hash = hex::decode(&hash)?;
     let mut conn = context.connect().await?;
     let ballot = crate::vote::delegate(
         &Network::MainNetwork,
         &mut conn,
-        &hash,
         id_account,
-        idx_question,
         address,
         amount,
     )
@@ -212,15 +181,10 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
     Ok(address)
 }
 
-// pub async fn tally_election(hash: String, election_seed: String, context: &Context) -> Result<()> {
-//     let hash = hex::decode(&hash)?;
-//     let mut conn = context.connect().await?;
-//     crate::ballot::tally_election(&Network::MainNetwork, &mut conn, &election_seed, &hash).await?;
-//     Ok(())
-// }
+async fn connect_to_vote_server(context: &Context) -> Result<VoteClient> {
+    let ep = Endpoint::from_shared(context.election_url.clone())?;
+    let client = VoteStreamerClient::connect(ep).await?;
+    Ok(client)
+}
 
-// pub async fn tally_plurality_election(
-//     network: &Network,
-//     conn: &mut SqliteConnection,
-//     election_seed: &str,
-//     hash: &[u8],
+
