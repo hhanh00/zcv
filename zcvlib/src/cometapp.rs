@@ -14,6 +14,7 @@ use zcvlib::{
     context::BFTContext,
     db::create_schema,
     server::{rpc::ZCVServer, run_cometbft_app},
+    vote::VK,
     vote_rpc::vote_streamer_server::VoteStreamerServer,
 };
 
@@ -35,6 +36,8 @@ pub struct Config {
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    std::sync::LazyLock::force(&VK);
+
     let config = Config::parse();
     let config: Config = Figment::new()
         .merge(Toml::file("zcv.toml"))
@@ -54,7 +57,8 @@ pub async fn main() -> Result<()> {
     let db_path = db_path.unwrap_or("vote.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
 
-    let context = BFTContext::new(&db_path, &lwd_url, cometrpc_port, unsafe_skip_validation).await?;
+    let context =
+        BFTContext::new(&db_path, &lwd_url, cometrpc_port, unsafe_skip_validation).await?;
     {
         let mut conn = context.connect().await?;
         create_schema(&mut conn).await?;
@@ -69,9 +73,7 @@ pub async fn main() -> Result<()> {
             .build()
             .unwrap();
         r.block_on(async move {
-            run_cometbft_app(context, cometbft_port)
-                .await
-                .unwrap();
+            run_cometbft_app(context, cometbft_port).await.unwrap();
             Ok::<_, ZCVError>(())
         })
     });

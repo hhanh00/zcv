@@ -32,7 +32,7 @@ jobs:
           cometbft init --home node
           cometbft start --home node >/dev/null &
           ./target/release/vote-cometbft --unsafe-skip-validation >/dev/null &
-          sleep 10
+          sleep 45
           ./tests/submit_election.sh ./tests/test_election
           ./target/release/voter --election-url "http://localhost:9010" &
           sleep 1
