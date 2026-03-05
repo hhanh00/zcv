@@ -19,6 +19,8 @@ message Validator {
 
 message Election {
     string election = 1;
+    bytes nf_root = 2;
+    bytes cmx_tree_state = 3;
 }
 
 message VoteHeight {

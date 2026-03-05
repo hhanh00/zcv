@@ -41,7 +41,10 @@ ff = { workspace = true }
 hex = { workspace = true }
 zcash_protocol = { workspace = true }
 zcash_note_encryption = { workspace = true }
+zcash_encoding = { workspace = true }
 pasta_curves = { workspace = true }
+incrementalmerkletree = { workspace = true }
+byteorder = { workspace = true }
 zip32 = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }

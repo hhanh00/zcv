@@ -28,12 +28,14 @@ gq http://127.0.0.1:8000/graphql \
 -q '
 mutation {
   vote(idAccount: 1 amount: "0.01"
-  voteContent: "000100")
+  voteContent: "020101")
 }'
+
+sleep 5
 
 echo "Scan"
 gq http://127.0.0.1:8000/graphql \
--q 'mutation {scanNotes(idAccounts: [1])}'
+-q 'mutation {scanBallots(idAccounts: [1])}'
 
 echo "Balance"
 BALANCE=$(gq -l --format=json http://127.0.0.1:8000/graphql \
@@ -41,4 +43,13 @@ BALANCE=$(gq -l --format=json http://127.0.0.1:8000/graphql \
 | jq -r .data.getBalance)
 printf '<%s>\n' "$BALANCE"
 [[ $BALANCE == "0.00169078" ]]
+
+echo "2nd Vote"
+gq http://127.0.0.1:8000/graphql \
+-q '
+mutation {
+  vote(idAccount: 1 amount: "0.00169078"
+  voteContent: "010202")
+}'
+
 popd
