@@ -20,7 +20,7 @@ use prost::Message;
 use serde_json::{Value, json};
 use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map::Entry},
     io::{Cursor, Read},
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
@@ -114,11 +114,11 @@ impl Application for Server {
                 TypeOneof::Ballot(ballot) => {
                     let ballot = from_protobuf(&ballot)?;
                     let hash = ballot.data.sighash()?;
-                    // Fail on inter block double spend (but passes on intra block
+                    // Fail on inter block double spend (but pass on intra block
                     // duplicate because it checks against the db)
-                    let state = self.state.lock().await;
-                    let election = state.election.as_ref().ok_or(anyhow!("Election not set"))?;
-                    state.check_ballot(&mut conn, election, ballot).await?;
+                    let mut state = self.state.lock().await;
+                    let election = state.election.clone().ok_or(anyhow!("Election not set"))?;
+                    state.check_ballot(&mut conn, &election, ballot).await?;
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
@@ -207,21 +207,23 @@ impl Application for Server {
         ResponsePrepareProposal { txs: proposed_txs }
     }
 
+    // A proposal can come from another node
+    // We should not trust it and validate the txs ourself
     fn process_proposal(&self, request: RequestProcessProposal) -> ResponseProcessProposal {
         let RequestProcessProposal { txs, height, .. } = request;
         // Reject ill formed proposals
         let rt = tokio::runtime::Runtime::new().unwrap();
         let res = rt.block_on(async move {
-            let state = self.state.lock().await;
+            let mut state = self.state.lock().await;
             let mut conn = state.pool.acquire().await?;
-            let election = state.election.as_ref();
+            let election = state.election.clone();
             // Check everything (do the same thing as finalize_block) but do not commit
             let mut db_tx = conn.begin().await?;
             for (itx, mut tx) in txs.into_iter().enumerate() {
                 let msg = VoteMessage::decode(&mut tx)?;
                 if let Some(TypeOneof::Ballot(ballot)) = msg.type_oneof {
                     let ballot = from_protobuf(&ballot).anyhow()?;
-                    if let Some(election) = election {
+                    if let Some(election) = &election {
                         state.check_witnesses(&mut db_tx, election, &ballot).await?;
                         store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
                     } else {
@@ -307,7 +309,7 @@ impl Application for Server {
                                 let ballot = from_protobuf(&ballot).anyhow()?;
                                 let hash = ballot.data.sighash()?;
                                 let election =
-                                    state.election.as_ref().ok_or(anyhow!("Election not set"))?;
+                                    state.election.clone().ok_or(anyhow!("Election not set"))?;
                                 let h = election.end + height as u32;
                                 tracing::info!(
                                     "Expected NF ROOT: {}",
@@ -317,7 +319,7 @@ impl Application for Server {
                                     "Expected CMX ROOT: {}",
                                     hex::encode(state.cmx_tree.root().to_bytes())
                                 );
-                                state.check_witnesses(&mut db_tx, election, &ballot).await?;
+                                state.check_witnesses(&mut db_tx, &election, &ballot).await?;
                                 for a in ballot.data.actions.iter() {
                                     let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
                                     state.cmx_tree.append(cmx);
@@ -393,14 +395,27 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
 }
 
 impl ServerState {
-    pub fn clear_check_witnesses(&mut self) {}
+    pub fn clear_check_witnesses(&mut self) {
+        self.check_witnesses_cache.clear();
+    }
 
     pub async fn check_witnesses(
-        &self,
+        &mut self,
         conn: &mut SqliteConnection,
         e: &ElectionPropsPub,
         ballot: &orchard::vote::Ballot,
     ) -> ZCVResult<()> {
+        let sighash: [u8; 32] = tiu!(ballot.data.sighash().unwrap());
+        let cached = self.check_witnesses_cache.entry(sighash);
+        if let Entry::Occupied(valid) = cached {
+            if !valid.get() {
+                return Err(ZCVError::Any(anyhow!("Ballot previously checked as invalid")));
+            }
+            tracing::info!("Witness checked (cached)");
+            return Ok(())
+        }
+        let mut cached = cached.insert_entry(false); // Mark as invalid for now
+
         if !self.skip_validation {
             let nf_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.nf).into_option()
                 .ok_or(anyhow!("Ballot has invalid nf root"))?;
@@ -414,14 +429,12 @@ impl ServerState {
             orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
             tracing::info!("Witness checked");
         }
-        // TODO
-        // This is an expensive operation, therefore we should consider
-        // caching the result
+        cached.insert(true);
         Ok(())
     }
 
     pub async fn check_ballot(
-        &self,
+        &mut self,
         conn: &mut SqliteConnection,
         election: &ElectionPropsPub,
         ballot: orchard::vote::Ballot,
