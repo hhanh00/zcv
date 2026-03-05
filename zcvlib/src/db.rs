@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use bech32::{Bech32m, Hrp};
 use bip39::Mnemonic;
 use ff::PrimeField;
@@ -99,6 +99,12 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         data BLOB NOT NULL,
         witnesses BLOB NOT NULL,
         UNIQUE (height, itx))",
+    )
+    .execute(&mut *conn)
+    .await?;
+    query(
+        "CREATE TABLE IF NOT EXISTS vs_cmxs(
+        cmx BLOB PRIMARY KEY NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
@@ -297,6 +303,26 @@ pub async fn store_apphash(conn: &mut SqliteConnection, apphash: &[u8]) -> ZCVRe
         .bind(apphash)
         .execute(conn)
         .await?;
+    Ok(())
+}
+
+pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8]) -> ZCVResult<()> {
+    query("INSERT INTO vs_cmxs(cmx) VALUES (?1) ON CONFLICT DO NOTHING")
+        .bind(cmx)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn check_cmx_root(conn: &mut SqliteConnection, cmx_root: &[u8]) -> ZCVResult<()> {
+    let exist: Option<(bool, )> = query_as("SELECT 1 FROM vs_cmxs WHERE cmx = ?1")
+        .bind(cmx_root)
+        .fetch_optional(conn)
+        .await?;
+    tracing::info!("check_cmx_root {exist:?}");
+    if exist.is_none() {
+        return Err(crate::ZCVError::Any(anyhow!("Unknown cmx_root")));
+    }
     Ok(())
 }
 

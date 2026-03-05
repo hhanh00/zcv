@@ -2,8 +2,7 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        get_apphash, store_apphash, store_ballot, store_election,
-        store_election_height_inc_position,
+        check_cmx_root, get_apphash, store_apphash, store_ballot, store_cmx_root, store_election, store_election_height_inc_position
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -223,7 +222,7 @@ impl Application for Server {
                 if let Some(TypeOneof::Ballot(ballot)) = msg.type_oneof {
                     let ballot = from_protobuf(&ballot).anyhow()?;
                     if let Some(election) = election {
-                        state.check_witnesses(election, &ballot)?;
+                        state.check_witnesses(&mut db_tx, election, &ballot).await?;
                         store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
                     } else {
                         anyhow::bail!("No election set");
@@ -295,6 +294,7 @@ impl Application for Server {
                                     Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
                                 let cmx_root = cmx_tree.root();
                                 tracing::info!("CMX ROOT: {}", hex::encode(cmx_root.to_bytes()));
+                                store_cmx_root(&mut db_tx, &cmx_root.to_bytes()).await?;
 
                                 let election: ElectionPropsPub = serde_json::from_str(&election)?;
                                 store_election(&mut db_tx, &election).await?;
@@ -311,13 +311,17 @@ impl Application for Server {
                                 let h = election.end + height as u32;
                                 tracing::info!(
                                     "Expected NF ROOT: {}",
-                                    hex::encode(&state.nf_root.to_bytes())
+                                    hex::encode(state.nf_root.to_bytes())
                                 );
                                 tracing::info!(
                                     "Expected CMX ROOT: {}",
-                                    hex::encode(&state.cmx_tree.root().to_bytes())
+                                    hex::encode(state.cmx_tree.root().to_bytes())
                                 );
-                                state.check_witnesses(election, &ballot)?;
+                                state.check_witnesses(&mut db_tx, election, &ballot).await?;
+                                for a in ballot.data.actions.iter() {
+                                    let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
+                                    state.cmx_tree.append(cmx);
+                                }
                                 // This will catch and fail on a double spend because of the UNIQUE dnf
                                 let id_ballot =
                                     store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
@@ -363,6 +367,7 @@ impl Application for Server {
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
                 store_apphash(&mut db_tx, &apphash).await.unwrap();
+                store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes()).await?;
 
                 db_tx.commit().await?;
                 state.clear_check_witnesses();
@@ -390,12 +395,22 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
 impl ServerState {
     pub fn clear_check_witnesses(&mut self) {}
 
-    pub fn check_witnesses(
+    pub async fn check_witnesses(
         &self,
+        conn: &mut SqliteConnection,
         e: &ElectionPropsPub,
         ballot: &orchard::vote::Ballot,
     ) -> ZCVResult<()> {
         if !self.skip_validation {
+            let nf_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.nf).into_option()
+                .ok_or(anyhow!("Ballot has invalid nf root"))?;
+            if self.nf_root != nf_root {
+                return Err(ZCVError::Any(anyhow!("Ballot has unexpected nf root")));
+            }
+            let cmx_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.cmx).into_option()
+                .ok_or(anyhow!("Ballot has invalid cmx root"))?;
+            check_cmx_root(conn, &cmx_root.to_bytes()).await?;
+
             orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
             tracing::info!("Witness checked");
         }
@@ -411,9 +426,9 @@ impl ServerState {
         election: &ElectionPropsPub,
         ballot: orchard::vote::Ballot,
     ) -> ZCVResult<()> {
-        self.check_witnesses(election, &ballot)?;
+        self.check_witnesses(conn, election, &ballot).await?;
         for a in ballot.data.actions {
-            tracing::info!("Action NF: {}", hex::encode(&a.nf));
+            tracing::info!("Action NF: {}", hex::encode(a.nf));
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
             if exists {
                 tracing::info!("Duplicate tx inter block (skip from proposal)");
