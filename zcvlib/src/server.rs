@@ -2,7 +2,8 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, store_apphash, store_ballot, store_cmx_root, store_election, store_election_height_inc_position
+        check_cmx_root, get_apphash, store_apphash, store_ballot, store_cmx_root, store_election,
+        store_election_height_inc_position,
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -62,7 +63,7 @@ pub struct ServerState {
     pub started: bool,
     pub election: Option<ElectionPropsPub>,
     pub skip_validation: bool,
-    pub check_witnesses_cache: HashMap<[u8; 32], bool>,
+    pub check_witnesses_cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
     pub nf_root: MerkleHashOrchard,
     pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
 }
@@ -80,7 +81,7 @@ impl ServerState {
             started,
             election: None,
             skip_validation,
-            check_witnesses_cache: HashMap::new(),
+            check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             nf_root: MerkleHashOrchard::empty_leaf(),
             cmx_tree: Frontier::empty(),
         })
@@ -118,9 +119,21 @@ impl Application for Server {
                     let hash = ballot.data.sighash()?;
                     // Fail on inter block double spend (but pass on intra block
                     // duplicate because it checks against the db)
-                    let mut state = self.state.lock().await;
-                    let election = state.election.clone().ok_or(anyhow!("Election not set"))?;
-                    state.check_ballot(&mut conn, &election, ballot).await?;
+                    let (election, cache, e_nf_root, skip_validation) = {
+                        let state = self.state.lock().await;
+                        let election = state.election.clone().ok_or(anyhow!("Election not set"))?;
+                        let cache = state.check_witnesses_cache.clone();
+                        (election, cache, state.nf_root, state.skip_validation)
+                    };
+                    ServerState::check_ballot(
+                        &mut conn,
+                        &election,
+                        ballot,
+                        e_nf_root,
+                        cache,
+                        skip_validation,
+                    )
+                    .await?;
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
@@ -216,7 +229,7 @@ impl Application for Server {
         // Reject ill formed proposals
         let rt = tokio::runtime::Runtime::new().unwrap();
         let res = rt.block_on(async move {
-            let mut state = self.state.lock().await;
+            let state = self.state.lock().await;
             let mut conn = state.pool.acquire().await?;
             let election = state.election.clone();
             // Check everything (do the same thing as finalize_block) but do not commit
@@ -226,7 +239,15 @@ impl Application for Server {
                 if let Some(TypeOneof::Ballot(ballot)) = msg.type_oneof {
                     let ballot = from_protobuf(&ballot).anyhow()?;
                     if let Some(election) = &election {
-                        state.check_witnesses(&mut db_tx, election, &ballot).await?;
+                        ServerState::check_witnesses(
+                            &mut db_tx,
+                            election,
+                            &ballot,
+                            state.nf_root,
+                            state.check_witnesses_cache.clone(),
+                            state.skip_validation,
+                        )
+                        .await?;
                         store_ballot(&mut db_tx, height as u32, itx as u32, ballot).await?;
                     } else {
                         anyhow::bail!("No election set");
@@ -321,7 +342,15 @@ impl Application for Server {
                                     "Expected CMX ROOT: {}",
                                     hex::encode(state.cmx_tree.root().to_bytes())
                                 );
-                                state.check_witnesses(&mut db_tx, &election, &ballot).await?;
+                                ServerState::check_witnesses(
+                                    &mut db_tx,
+                                    &election,
+                                    &ballot,
+                                    state.nf_root,
+                                    state.check_witnesses_cache.clone(),
+                                    state.skip_validation,
+                                )
+                                .await?;
                                 for a in ballot.data.actions.iter() {
                                     let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
                                     state.cmx_tree.append(cmx);
@@ -398,33 +427,42 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
 
 impl ServerState {
     pub fn clear_check_witnesses(&mut self) {
-        self.check_witnesses_cache.clear();
+        let mut cache = self.check_witnesses_cache.lock();
+        cache.clear();
     }
 
     pub async fn check_witnesses(
-        &mut self,
         conn: &mut SqliteConnection,
         e: &ElectionPropsPub,
         ballot: &orchard::vote::Ballot,
+        e_nf_root: MerkleHashOrchard,
+        cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
+        skip_validation: bool,
     ) -> ZCVResult<()> {
         let sighash: [u8; 32] = tiu!(ballot.data.sighash().unwrap());
-        let cached = self.check_witnesses_cache.entry(sighash);
-        if let Entry::Occupied(valid) = cached {
-            if !valid.get() {
-                return Err(ZCVError::Any(anyhow!("Ballot previously checked as invalid")));
+        {
+            let mut check_witnesses_cache = cache.lock();
+            let cached = check_witnesses_cache.entry(sighash);
+            if let Entry::Occupied(valid) = cached {
+                if !valid.get() {
+                    return Err(ZCVError::Any(anyhow!(
+                        "Ballot previously checked as invalid"
+                    )));
+                }
+                tracing::info!("Witness checked (cached)");
+                return Ok(());
             }
-            tracing::info!("Witness checked (cached)");
-            return Ok(())
         }
-        let mut cached = cached.insert_entry(false); // Mark as invalid for now
 
-        if !self.skip_validation {
-            let nf_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.nf).into_option()
+        if !skip_validation {
+            let nf_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.nf)
+                .into_option()
                 .ok_or(anyhow!("Ballot has invalid nf root"))?;
-            if self.nf_root != nf_root {
+            if e_nf_root != nf_root {
                 return Err(ZCVError::Any(anyhow!("Ballot has unexpected nf root")));
             }
-            let cmx_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.cmx).into_option()
+            let cmx_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.cmx)
+                .into_option()
                 .ok_or(anyhow!("Ballot has invalid cmx root"))?;
             check_cmx_root(conn, &cmx_root.to_bytes()).await?;
 
@@ -432,17 +470,22 @@ impl ServerState {
             orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
             tracing::info!("Witness checked");
         }
-        cached.insert(true);
+        {
+            let mut check_witnesses_cache = cache.lock();
+            check_witnesses_cache.insert(sighash, true);
+        }
         Ok(())
     }
 
     pub async fn check_ballot(
-        &mut self,
         conn: &mut SqliteConnection,
         election: &ElectionPropsPub,
         ballot: orchard::vote::Ballot,
+        e_nf_root: MerkleHashOrchard,
+        cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
+        skip_validation: bool,
     ) -> ZCVResult<()> {
-        self.check_witnesses(conn, election, &ballot).await?;
+        Self::check_witnesses(conn, election, &ballot, e_nf_root, cache, skip_validation).await?;
         for a in ballot.data.actions {
             tracing::info!("Action NF: {}", hex::encode(a.nf));
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
