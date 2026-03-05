@@ -3,6 +3,7 @@ start: 3168000
 end: 3169000
 need_sig: true
 name: Test Election
+caption: Test test test
 questions:
 - title: Q1. What is your favorite color?
   answers:

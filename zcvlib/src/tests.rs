@@ -23,7 +23,7 @@ pub const TEST_SEED2: &str = "purity comic seek skull unfair host point dutch dr
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 pub const TEST_ELECTION_HASH: &[u8] =
-    &hex!("31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437");
+    &hex!("fe3e798167bbb848421923beeb9b805911641802301cd07743138e12dda0022d");
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
@@ -31,6 +31,7 @@ pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
         "end": 3169000,
         "need_sig": true,
         "name": "Test Election",
+        "caption": "Test test test",
         "questions": [
             {
                 "title": "Q1. What is your favorite color?",

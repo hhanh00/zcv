@@ -8,7 +8,7 @@ const storeElection = gql`
     storeElection(electionJson: $election)
   }
 `;
-const election = {"start":3168000,"end":3169000,"need_sig":true,"name":"Test Election","questions":[{"title":"Q1. What is your favorite color?","subtitle":"","answers":["Red","Green","Blue"]},{"title":"Q2. Is the earth flat?","subtitle":"","answers":["Yes","No"]},{"title":"Q3. Do you like pizza?","subtitle":"","answers":["Yes","No"]}],"address":"zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y","domain":"31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437"};
+const election = {"start":3168000,"end":3169000,"need_sig":true,"name":"Test Election","caption": "Test test test","questions":[{"title":"Q1. What is your favorite color?","subtitle":"","answers":["Red","Green","Blue"]},{"title":"Q2. Is the earth flat?","subtitle":"","answers":["Yes","No"]},{"title":"Q3. Do you like pizza?","subtitle":"","answers":["Yes","No"]}],"address":"zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y","domain":"31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437"};
 const rep = await client.request(storeElection, {
   election: JSON.stringify(election),
 });
