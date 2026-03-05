@@ -34,7 +34,7 @@ jobs:
           cometbft start --home node >/dev/null &
           cp zcv.toml node/
           (cd node; ../target/release/vote-cometbft &)
-          sleep 5
+          sleep 45
           ./tests/submit_election.sh ./tests/test_election
           sleep 5
           ./target/release/voter --election-url "http://localhost:9010" &

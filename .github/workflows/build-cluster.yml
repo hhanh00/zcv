@@ -1,4 +1,4 @@
-name: Run Large Cluster Tests
+name: Run Cluster Tests
 permissions:
   contents: read
 
@@ -52,7 +52,7 @@ jobs:
           cometbft start --home node1 >/dev/null &
           (cd node1; vote-cometbft  >/dev/null &)
           echo "Chain should start with one validator"
-          sleep 10
+          sleep 45
           ./tests/submit_election.sh ./tests/test_election
           sleep 5
           HEIGHT1=$(curl -s localhost:26657/validators | jq -r .result.block_height)
@@ -68,7 +68,7 @@ jobs:
           echo "Starting 2nd validator"
           cometbft start --home node2 >/dev/null &
           (cd node2; vote-cometbft >/dev/null &)
-          sleep 10
+          sleep 30
           echo "Tell node1 to connect to node2"
           curl -s "localhost:26657/dial_peers?peers=%5B%22${NODE2_ID}%40127.0.0.1%3A26666%22%5D&persistent=true"
           sleep 10

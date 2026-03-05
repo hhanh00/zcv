@@ -1,4 +1,4 @@
-name: Run Cluster Tests
+name: Run Large Cluster Tests
 permissions:
   contents: read
 
@@ -51,7 +51,7 @@ jobs:
             sed -i -e "s#26657#${RPC_PORT}#" -e "s#26658#${BFT_PORT}#" -e "s#9010#${GRPC_PORT}#" node$i/zcv.toml
             cometbft start --home node$i >/dev/null &
             (cd node$i; ../target/release/vote-cometbft >/dev/null &)
-            sleep 3
+            sleep 30
             PK=$(cometbft show-validator --home node$i | jq .value)
             NODE_ID=$(cometbft show-node-id --home node$i)
             if [[ $i -ne 1 ]]; then
