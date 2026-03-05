@@ -25,6 +25,7 @@ pub struct ElectionProps {
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
+    pub caption: String,
     pub questions: Vec<QuestionProp>,
 }
 
@@ -43,6 +44,7 @@ pub struct ElectionPropsPub {
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
+    pub caption: String,
     pub questions: Vec<QuestionProp>,
     pub address: String,
     #[serde_as(as = "serde_with::hex::Hex")]
@@ -58,6 +60,7 @@ impl ElectionProps {
             end,
             need_sig,
             name,
+            caption,
             questions,
             ..
         } = self;
@@ -80,6 +83,7 @@ impl ElectionProps {
             end,
             need_sig,
             name: name.clone(),
+            caption: caption.clone(),
             questions: questions.clone(),
         };
         let domain = eph.calculate_domain()?.to_repr().to_vec();
@@ -89,6 +93,7 @@ impl ElectionProps {
             end,
             need_sig,
             name,
+            caption,
             questions,
             address,
             domain,
@@ -104,6 +109,7 @@ pub struct ElectionPropsHashable {
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
+    pub caption: String,
     pub questions: Vec<QuestionProp>,
 }
 

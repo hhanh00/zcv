@@ -3,6 +3,7 @@
   "end": 3169000,
   "need_sig": true,
   "name": "Test Election",
+  "caption": "Test test test",
   "questions": [
     {
       "title": "Q1. What is your favorite color?",
@@ -31,5 +32,5 @@
     }
   ],
   "address": "zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y",
-  "domain": "31e3ae6eca52d324ca3198f8ba2b39dae84a9746941ac507641560185f286437"
+  "domain": "fe3e798167bbb848421923beeb9b805911641802301cd07743138e12dda0022d"
 }
