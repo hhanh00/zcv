@@ -157,7 +157,7 @@ pub mod vote_streamer_client {
         }
         pub async fn get_election(
             &mut self,
-            request: impl tonic::IntoRequest<super::Hash>,
+            request: impl tonic::IntoRequest<super::Empty>,
         ) -> std::result::Result<tonic::Response<super::Election>, tonic::Status> {
             self.inner
                 .ready()
@@ -337,7 +337,7 @@ pub mod vote_streamer_server {
     pub trait VoteStreamer: std::marker::Send + std::marker::Sync + 'static {
         async fn get_election(
             &self,
-            request: tonic::Request<super::Hash>,
+            request: tonic::Request<super::Empty>,
         ) -> std::result::Result<tonic::Response<super::Election>, tonic::Status>;
         async fn set_election(
             &self,
@@ -452,7 +452,7 @@ pub mod vote_streamer_server {
                 "/cash.z.vote.sdk.rpc.VoteStreamer/GetElection" => {
                     #[allow(non_camel_case_types)]
                     struct GetElectionSvc<T: VoteStreamer>(pub Arc<T>);
-                    impl<T: VoteStreamer> tonic::server::UnaryService<super::Hash>
+                    impl<T: VoteStreamer> tonic::server::UnaryService<super::Empty>
                     for GetElectionSvc<T> {
                         type Response = super::Election;
                         type Future = BoxFuture<
@@ -461,7 +461,7 @@ pub mod vote_streamer_server {
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::Hash>,
+                            request: tonic::Request<super::Empty>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
