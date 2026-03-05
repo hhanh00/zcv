@@ -44,7 +44,7 @@ message Hash {
 }
 
 service VoteStreamer {
-    rpc GetElection(Hash) returns (Election) {}
+    rpc GetElection(Empty) returns (Election) {}
     rpc SetElection(Election) returns (Hash) {}
     rpc AddValidator(Validator) returns (Empty) {}
     rpc Start(Empty) returns (Empty) {}
