@@ -96,6 +96,7 @@ impl Application for Server {
     // Valid txs must not be rejected
     // But bad txs may be kept for the moment
     fn check_tx(&self, request: RequestCheckTx) -> ResponseCheckTx {
+        tracing::info!("check_tx");
         let RequestCheckTx { mut tx, .. } = request;
         let rt = Runtime::new().unwrap();
         let data = rt.block_on(async move {
@@ -112,6 +113,7 @@ impl Application for Server {
                     election.domain.clone()
                 }
                 TypeOneof::Ballot(ballot) => {
+                    tracing::info!("check_tx::ballot");
                     let ballot = from_protobuf(&ballot)?;
                     let hash = ballot.data.sighash()?;
                     // Fail on inter block double spend (but pass on intra block
@@ -426,6 +428,7 @@ impl ServerState {
                 .ok_or(anyhow!("Ballot has invalid cmx root"))?;
             check_cmx_root(conn, &cmx_root.to_bytes()).await?;
 
+            tracing::info!("Public anchors checked");
             orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
             tracing::info!("Witness checked");
         }
