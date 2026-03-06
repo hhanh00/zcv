@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.4.0...zcvlib-v0.5.0) (2026-03-06)
+
+
+### Features
+
+* add caption field to election ([#148](https://github.com/hhanh00/zcv/issues/148)) ([3db5882](https://github.com/hhanh00/zcv/commit/3db5882c7f421a5c781c570a51c43ca4cd690150))
+* add get_election rpc to vote server ([#131](https://github.com/hhanh00/zcv/issues/131)) ([564ab39](https://github.com/hhanh00/zcv/commit/564ab39dd6ab22f29dde4cf1c03e1ed469271d36))
+* add scan progress reporter ([#133](https://github.com/hhanh00/zcv/issues/133)) ([44bb541](https://github.com/hhanh00/zcv/commit/44bb5412f3ec71240a8b02661c4cad260b644709))
+* add zkproof and sign ([#139](https://github.com/hhanh00/zcv/issues/139)) ([af5fbb6](https://github.com/hhanh00/zcv/commit/af5fbb694e568d069d44a935b18f4960e226ad3e))
+* ballot validation zkp & signature ([#141](https://github.com/hhanh00/zcv/issues/141)) ([f447f55](https://github.com/hhanh00/zcv/commit/f447f559af6781e85c7d534e3eaea18f24571835))
+* cache witness checks ([#144](https://github.com/hhanh00/zcv/issues/144)) ([25e13d2](https://github.com/hhanh00/zcv/commit/25e13d2971696788fa7108b3749ef09155d3003d))
+* check against past cmx_roots ([#143](https://github.com/hhanh00/zcv/issues/143)) ([2a5c9a2](https://github.com/hhanh00/zcv/commit/2a5c9a261335acc94e344a33954da7ac9ab9645b))
+* check election domain vs ballot domain ([#152](https://github.com/hhanh00/zcv/issues/152)) ([de38810](https://github.com/hhanh00/zcv/commit/de38810cd25eefed8b4f049cbfb8e266b22119fc))
+* check nf_root & cmx_root ([#142](https://github.com/hhanh00/zcv/issues/142)) ([f4bfa1d](https://github.com/hhanh00/zcv/commit/f4bfa1ddbaf8c7995ab4afa47cdb858731959d2f))
+* **client:** delete election ([#135](https://github.com/hhanh00/zcv/issues/135)) ([0169edf](https://github.com/hhanh00/zcv/commit/0169edf8dfe5c395011e23df778c878801cb7360))
+* optimize check_tx with block production ([#147](https://github.com/hhanh00/zcv/issues/147)) ([e76e78b](https://github.com/hhanh00/zcv/commit/e76e78bbaf45351d9972e27d42f3e956051d73b8))
+* remove multi-election support and nested questions ([#140](https://github.com/hhanh00/zcv/issues/140)) ([47fb188](https://github.com/hhanh00/zcv/commit/47fb18826c87e674bf1d5fc93ae1f3da72bc4bc6))
+* return voteid from vote() ([#150](https://github.com/hhanh00/zcv/issues/150)) ([8057851](https://github.com/hhanh00/zcv/commit/80578511c1da33a96d7e95399766786e7f086023))
+* save nfs & cmxs ([#136](https://github.com/hhanh00/zcv/issues/136)) ([ff5c516](https://github.com/hhanh00/zcv/commit/ff5c516ba14fedeeb75cd4241233c0d4a33511b1))
+* store ballot/action cmx ([#137](https://github.com/hhanh00/zcv/issues/137)) ([8c24ea2](https://github.com/hhanh00/zcv/commit/8c24ea20ddafe0163ad15d98792a1a837cb13dd0))
+* vote delegation to a given address ([#151](https://github.com/hhanh00/zcv/issues/151)) ([4166ef8](https://github.com/hhanh00/zcv/commit/4166ef8a96779b8b7ef5721bfda88abf243cc497))
+* warmup circuit validation key ([#146](https://github.com/hhanh00/zcv/issues/146)) ([cd10ef3](https://github.com/hhanh00/zcv/commit/cd10ef3e1be398da0390c5d7c280b12e35094820))
+
+
+### Bug Fixes
+
+* add a prefix v_ to every table ([#130](https://github.com/hhanh00/zcv/issues/130)) ([a141866](https://github.com/hhanh00/zcv/commit/a141866f21a43308c2c32a3fd5abae731328be8d))
+* avoid scanning blocks if they were scanned before ([#134](https://github.com/hhanh00/zcv/issues/134)) ([d5ee50e](https://github.com/hhanh00/zcv/commit/d5ee50e19daefa1a42e476c40bc4829586774153))
+* remove hash param from get_election ([#149](https://github.com/hhanh00/zcv/issues/149)) ([598adf0](https://github.com/hhanh00/zcv/commit/598adf076ebb3b6e623c86da7f9fc2060eee9220))
+
+
+### Chores
+
+* add trace message ([#145](https://github.com/hhanh00/zcv/issues/145)) ([8516271](https://github.com/hhanh00/zcv/commit/85162719828f7e71edf9102dc1f240e89a0802e8))
+* remove dead code ([#138](https://github.com/hhanh00/zcv/issues/138)) ([11fbcb1](https://github.com/hhanh00/zcv/commit/11fbcb1cec9d1c9c3f7f14ad35f1b48a2a4db635))
+* remove flutter rust bridge ([#128](https://github.com/hhanh00/zcv/issues/128)) ([bd9fdcd](https://github.com/hhanh00/zcv/commit/bd9fdcd82ecb992d47deed117a8c0c970d47d1a3))
+
 ## [0.4.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.3.0...zcvlib-v0.4.0) (2026-02-19)
 
 
