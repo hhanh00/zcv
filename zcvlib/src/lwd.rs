@@ -110,6 +110,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
     if end <= height {
         return Ok(());
     }
+    tracing::info!("scan_blocks [{start},{end}]");
 
     let mut db_tx = conn.begin().await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
@@ -234,8 +235,12 @@ pub async fn scan_ballots(
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
-    let mut db_tx = conn.begin().await?;
     tracing::info!("scan_ballots [{start},{end}]");
+    if start > end {
+        tracing::info!("Skipping scan_ballots");
+        return Ok(());
+    }
+    let mut db_tx = conn.begin().await?;
     crate::db::delete_range(&mut db_tx, start, end).await?;
     let mut ivks = vec![];
     for id_account in id_accounts {
