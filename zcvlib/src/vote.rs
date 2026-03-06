@@ -13,7 +13,7 @@ use zcash_protocol::consensus::Network;
 use crate::{
     ZCVResult,
     balance::list_unspent_notes,
-    ballot::{encrypt_ballot_data, encrypt_ballot_data_with_spends},
+    ballot::encrypt_ballot_data_with_spends,
     db::{get_account_address, get_account_sk, get_domain, get_election, get_ivks},
     tiu,
 };
@@ -26,7 +26,18 @@ pub async fn vote(
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, address) = get_domain(conn).await?;
-    let (_, recipient) = bech32::decode(&address).unwrap();
+    send_vote(network, conn, id_account, domain, &address, memo, amount).await
+}
+
+pub async fn send_vote(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    id_account: u32,
+    domain: Fp,
+    address: &str,
+    memo: &[u8],
+    amount: u64) -> ZCVResult<Ballot> {
+    let (_, recipient) = bech32::decode(address).unwrap();
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
 
     let e = get_election(conn).await?;
@@ -158,22 +169,7 @@ pub async fn delegate(
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, _) = get_domain(conn).await?;
-
-    let data = encrypt_ballot_data(
-        network,
-        conn,
-        domain,
-        id_account,
-        address,
-        &[],
-        amount,
-        OsRng,
-    )
-    .await?;
-    Ok(Ballot {
-        data,
-        witnesses: dummy_witnesses(),
-    })
+    send_vote(network, conn, id_account, domain, address, &[], amount).await
 }
 
 fn dummy_witnesses() -> BallotWitnesses {
