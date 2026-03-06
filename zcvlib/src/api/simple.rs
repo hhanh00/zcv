@@ -105,7 +105,7 @@ pub async fn get_balance(
     Ok(balance)
 }
 
-async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
+async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<Vec<u8>> {
     let mut ballot_bytes = vec![];
     ballot.write(&mut ballot_bytes)?;
     let mut client = connect_to_vote_server(context).await?;
@@ -115,7 +115,8 @@ async fn submit_ballot(ballot: Ballot, context: &Context) -> Result<()> {
             ..Default::default()
         }))
         .await?;
-    Ok(())
+    let txid = ballot.data.sighash()?;
+    Ok(txid)
 }
 
 pub async fn vote(
@@ -123,7 +124,7 @@ pub async fn vote(
     vote_content: String,
     amount: u64,
     context: &Context,
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     let memo = hex::decode(&vote_content)?;
     let mut conn = context.connect().await?;
     let ballot = crate::vote::vote(
@@ -134,8 +135,8 @@ pub async fn vote(
         amount,
     )
     .await?;
-    submit_ballot(ballot, context).await?;
-    Ok(())
+    let txid = submit_ballot(ballot, context).await?;
+    Ok(txid)
 }
 
 pub async fn mint(

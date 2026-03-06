@@ -238,7 +238,7 @@ pub async fn store_election(
 pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
     query(
-        "UPDATE v_state SET url = NULL, hash = x'',
+        "UPDATE v_state SET url = NULL,
     account = NULL, started = 0 WHERE id = 0",
     )
     .execute(&mut *db_tx)
@@ -248,6 +248,9 @@ pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()
         .await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
+    query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
+    query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
+
     db_tx.commit().await?;
     Ok(())
 }
