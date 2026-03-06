@@ -161,7 +161,7 @@ pub async fn delegate(
     address: &str,
     amount: u64,
     context: &Context,
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     let mut conn = context.connect().await?;
     let ballot = crate::vote::delegate(
         &Network::MainNetwork,
@@ -171,8 +171,8 @@ pub async fn delegate(
         amount,
     )
     .await?;
-    submit_ballot(ballot, context).await?;
-    Ok(())
+    let txid = submit_ballot(ballot, context).await?;
+    Ok(txid)
 }
 
 pub async fn get_account_address(id_account: u32, context: &Context) -> Result<String> {
