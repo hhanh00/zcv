@@ -15,8 +15,10 @@ use anyhow::{Context, anyhow};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use byteorder::{LE, ReadBytesExt};
+use ff::PrimeField;
 use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
 use orchard::tree::MerkleHashOrchard;
+use pasta_curves::Fp;
 use prost::Message;
 use serde_json::{Value, json};
 use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
@@ -64,6 +66,7 @@ pub struct ServerState {
     pub election: Option<ElectionPropsPub>,
     pub skip_validation: bool,
     pub check_witnesses_cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
+    pub domain: Fp,
     pub nf_root: MerkleHashOrchard,
     pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
 }
@@ -82,6 +85,7 @@ impl ServerState {
             election: None,
             skip_validation,
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            domain: Fp::zero(),
             nf_root: MerkleHashOrchard::empty_leaf(),
             cmx_tree: Frontier::empty(),
         })
@@ -119,16 +123,17 @@ impl Application for Server {
                     let hash = ballot.data.sighash()?;
                     // Fail on inter block double spend (but pass on intra block
                     // duplicate because it checks against the db)
-                    let (election, cache, e_nf_root, skip_validation) = {
+                    let (election, cache, domain, e_nf_root, skip_validation) = {
                         let state = self.state.lock().await;
                         let election = state.election.clone().ok_or(anyhow!("Election not set"))?;
                         let cache = state.check_witnesses_cache.clone();
-                        (election, cache, state.nf_root, state.skip_validation)
+                        (election, cache, state.domain, state.nf_root, state.skip_validation)
                     };
                     ServerState::check_ballot(
                         &mut conn,
                         &election,
                         ballot,
+                        domain,
                         e_nf_root,
                         cache,
                         skip_validation,
@@ -243,6 +248,7 @@ impl Application for Server {
                             &mut db_tx,
                             election,
                             &ballot,
+                            state.domain,
                             state.nf_root,
                             state.check_witnesses_cache.clone(),
                             state.skip_validation,
@@ -323,7 +329,10 @@ impl Application for Server {
 
                                 let election: ElectionPropsPub = serde_json::from_str(&election)?;
                                 store_election(&mut db_tx, &election).await?;
+                                let domain = Fp::from_repr(tiu!(election.domain.clone())).unwrap();
+
                                 state.election = Some(election);
+                                state.domain = domain;
                                 state.nf_root = nf_root;
                                 state.cmx_tree = cmx_tree;
                             }
@@ -346,6 +355,7 @@ impl Application for Server {
                                     &mut db_tx,
                                     &election,
                                     &ballot,
+                                    state.domain,
                                     state.nf_root,
                                     state.check_witnesses_cache.clone(),
                                     state.skip_validation,
@@ -435,6 +445,7 @@ impl ServerState {
         conn: &mut SqliteConnection,
         e: &ElectionPropsPub,
         ballot: &orchard::vote::Ballot,
+        e_domain: Fp,
         e_nf_root: MerkleHashOrchard,
         cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
         skip_validation: bool,
@@ -455,6 +466,12 @@ impl ServerState {
         }
 
         if !skip_validation {
+            let domain = Fp::from_repr(ballot.data.domain)
+                .into_option()
+                .ok_or(anyhow!("Invalid domain"))?;
+            if e_domain != domain {
+                return Err(ZCVError::Any(anyhow!("Ballot has unexpected domain")));
+            }
             let nf_root = MerkleHashOrchard::from_bytes(&ballot.data.anchors.nf)
                 .into_option()
                 .ok_or(anyhow!("Ballot has invalid nf root"))?;
@@ -481,11 +498,12 @@ impl ServerState {
         conn: &mut SqliteConnection,
         election: &ElectionPropsPub,
         ballot: orchard::vote::Ballot,
+        e_domain: Fp,
         e_nf_root: MerkleHashOrchard,
         cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
         skip_validation: bool,
     ) -> ZCVResult<()> {
-        Self::check_witnesses(conn, election, &ballot, e_nf_root, cache, skip_validation).await?;
+        Self::check_witnesses(conn, election, &ballot, e_domain, e_nf_root, cache, skip_validation).await?;
         for a in ballot.data.actions {
             tracing::info!("Action NF: {}", hex::encode(a.nf));
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
