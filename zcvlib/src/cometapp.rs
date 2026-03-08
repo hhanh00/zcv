@@ -88,7 +88,7 @@ pub async fn main() -> Result<()> {
             local
                 .run_until(async move {
                     let service = ZCVServer { context: context2 };
-                    let addr = format!("127.0.0.1:{}", grpc_port).parse().unwrap();
+                    let addr = format!("0.0.0.0:{}", grpc_port).parse().unwrap();
                     let mut builder = Server::builder();
                     builder
                         .add_service(VoteStreamerServer::new(service))
