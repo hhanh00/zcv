@@ -8,4 +8,3 @@ ELECTION_REQ=$(jq -n --arg election "$ELECTION" '{"election": $election}')
 echo $ELECTION_REQ
 
 grpcurl -d "$ELECTION_REQ" --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
-grpcurl -d '{}' --proto zcvlib/protos/vote.proto --plaintext localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/Lock

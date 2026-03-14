@@ -34,6 +34,7 @@ jobs:
           ./target/release/vote-cometbft --unsafe-skip-validation >/dev/null &
           sleep 45
           ./tests/submit_election.sh ./tests/test_election
+          ./tests/submit_lock.sh
           ./target/release/voter --election-url "http://localhost:9010" &
           sleep 1
           (cd tests/scale;deno install)
