@@ -36,8 +36,7 @@ pub struct Config {
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    std::sync::LazyLock::force(&VK);
-
+    BFTContext::init_logger();
     let config = Config::parse();
     let config: Config = Figment::new()
         .merge(Toml::file("zcv.toml"))
@@ -56,6 +55,10 @@ pub async fn main() -> Result<()> {
     let grpc_port = grpc_port.unwrap_or(9010);
     let db_path = db_path.unwrap_or("vote.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
+
+    tracing::info!("Computing Proving Key. Please wait...");
+    std::sync::LazyLock::force(&VK);
+    tracing::info!("Done.");
 
     let context =
         BFTContext::new(&db_path, &lwd_url, cometrpc_port, unsafe_skip_validation).await?;
