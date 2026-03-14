@@ -90,7 +90,7 @@ impl VoteStreamer for ZCVServer {
 
     async fn lock(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
         let m = VoteMessage {
-            type_oneof: Some(TypeOneof::Lock(0)),
+            type_oneof: Some(TypeOneof::Lock(Empty {})),
         };
         self.submit(m).await?;
         Ok(Response::new(Empty {}))

@@ -7,7 +7,7 @@ message VoteMessage {
     oneof type_oneof {
         Validator add_validator = 1;
         Election set_election = 2;
-        uint32 lock = 3;
+        Empty lock = 3;
         Ballot ballot = 4;
     }
 }

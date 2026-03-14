@@ -14,8 +14,8 @@ pub mod vote_message {
         AddValidator(super::Validator),
         #[prost(message, tag = "2")]
         SetElection(super::Election),
-        #[prost(uint32, tag = "3")]
-        Lock(u32),
+        #[prost(message, tag = "3")]
+        Lock(super::Empty),
         #[prost(message, tag = "4")]
         Ballot(super::Ballot),
     }
