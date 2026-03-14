@@ -14,8 +14,8 @@ pub mod vote_message {
         AddValidator(super::Validator),
         #[prost(message, tag = "2")]
         SetElection(super::Election),
-        #[prost(uint32, tag = "3")]
-        Start(u32),
+        #[prost(message, tag = "3")]
+        Lock(super::Empty),
         #[prost(message, tag = "4")]
         Ballot(super::Ballot),
     }
@@ -224,7 +224,7 @@ pub mod vote_streamer_client {
                 );
             self.inner.unary(req, path, codec).await
         }
-        pub async fn start(
+        pub async fn lock(
             &mut self,
             request: impl tonic::IntoRequest<super::Empty>,
         ) -> std::result::Result<tonic::Response<super::Empty>, tonic::Status> {
@@ -238,11 +238,11 @@ pub mod vote_streamer_client {
                 })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/cash.z.vote.sdk.rpc.VoteStreamer/Start",
+                "/cash.z.vote.sdk.rpc.VoteStreamer/Lock",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("cash.z.vote.sdk.rpc.VoteStreamer", "Start"));
+                .insert(GrpcMethod::new("cash.z.vote.sdk.rpc.VoteStreamer", "Lock"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn get_latest_vote_height(
@@ -347,7 +347,7 @@ pub mod vote_streamer_server {
             &self,
             request: tonic::Request<super::Validator>,
         ) -> std::result::Result<tonic::Response<super::Empty>, tonic::Status>;
-        async fn start(
+        async fn lock(
             &self,
             request: tonic::Request<super::Empty>,
         ) -> std::result::Result<tonic::Response<super::Empty>, tonic::Status>;
@@ -578,11 +578,11 @@ pub mod vote_streamer_server {
                     };
                     Box::pin(fut)
                 }
-                "/cash.z.vote.sdk.rpc.VoteStreamer/Start" => {
+                "/cash.z.vote.sdk.rpc.VoteStreamer/Lock" => {
                     #[allow(non_camel_case_types)]
-                    struct StartSvc<T: VoteStreamer>(pub Arc<T>);
+                    struct LockSvc<T: VoteStreamer>(pub Arc<T>);
                     impl<T: VoteStreamer> tonic::server::UnaryService<super::Empty>
-                    for StartSvc<T> {
+                    for LockSvc<T> {
                         type Response = super::Empty;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
@@ -594,7 +594,7 @@ pub mod vote_streamer_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as VoteStreamer>::start(&inner, request).await
+                                <T as VoteStreamer>::lock(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -605,7 +605,7 @@ pub mod vote_streamer_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = StartSvc(inner);
+                        let method = LockSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

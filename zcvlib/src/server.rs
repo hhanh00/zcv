@@ -62,7 +62,7 @@ impl Server {
 
 pub struct ServerState {
     pub pool: SqlitePool,
-    pub started: bool,
+    pub locked: bool,
     pub election: Option<ElectionPropsPub>,
     pub skip_validation: bool,
     pub check_witnesses_cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
@@ -74,14 +74,14 @@ pub struct ServerState {
 impl ServerState {
     pub async fn new(pool: SqlitePool, skip_validation: bool) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
-        let (started,): (bool,) = query_as("SELECT started FROM v_state WHERE id = 0")
+        let (locked,): (bool,) = query_as("SELECT locked FROM v_state WHERE id = 0")
             .fetch_one(&mut *conn)
             .await
-            .context("get started")?;
+            .context("get locked")?;
 
         Ok(Self {
             pool,
-            started,
+            locked,
             election: None,
             skip_validation,
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
@@ -143,15 +143,15 @@ impl Application for Server {
                 }
                 TypeOneof::AddValidator(v) => {
                     let state = self.state.lock().await;
-                    if state.started {
-                        anyhow::bail!("Validators cannot be added once the blockchain is started.");
+                    if state.locked {
+                        anyhow::bail!("Validators cannot be added once the blockchain is locked.");
                     }
                     v.pub_key
                 }
-                TypeOneof::Start(_) => {
+                TypeOneof::Lock(_) => {
                     let state = self.state.lock().await;
-                    if state.started {
-                        anyhow::bail!("Blockchain already started.");
+                    if state.locked {
+                        anyhow::bail!("Blockchain already locked.");
                     }
                     Vec::new()
                 }
@@ -373,9 +373,9 @@ impl Application for Server {
                                 }
                                 store_election_height_inc_position(&mut db_tx, h).await?;
                             }
-                            TypeOneof::Start(_) => {
-                                state.started = true;
-                                query("UPDATE v_state SET started = 1 WHERE id = 0")
+                            TypeOneof::Lock(_) => {
+                                state.locked = true;
+                                query("UPDATE v_state SET locked = 1 WHERE id = 0")
                                     .execute(&mut *db_tx)
                                     .await?;
                             }
