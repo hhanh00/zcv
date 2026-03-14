@@ -88,9 +88,9 @@ impl VoteStreamer for ZCVServer {
         res.await.map_err(to_tonic)
     }
 
-    async fn start(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
+    async fn lock(&self, _request: Request<Empty>) -> Result<Response<Empty>, Status> {
         let m = VoteMessage {
-            type_oneof: Some(TypeOneof::Start(0)),
+            type_oneof: Some(TypeOneof::Lock(0)),
         };
         self.submit(m).await?;
         Ok(Response::new(Empty {}))

@@ -7,7 +7,7 @@ message VoteMessage {
     oneof type_oneof {
         Validator add_validator = 1;
         Election set_election = 2;
-        uint32 start = 3;
+        uint32 lock = 3;
         Ballot ballot = 4;
     }
 }
@@ -47,7 +47,7 @@ service VoteStreamer {
     rpc GetElection(Empty) returns (Election) {}
     rpc SetElection(Election) returns (Hash) {}
     rpc AddValidator(Validator) returns (Empty) {}
-    rpc Start(Empty) returns (Empty) {}
+    rpc Lock(Empty) returns (Empty) {}
     rpc GetLatestVoteHeight(Empty) returns (VoteHeight) {}
     rpc GetVoteRange(VoteRange) returns (stream Ballot) {}
     rpc SubmitVote(Ballot) returns (Hash) {}

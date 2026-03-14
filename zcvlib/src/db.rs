@@ -29,12 +29,12 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         account INTEGER,
         url TEXT,
         apphash BLOB,
-        started BOOL NOT NULL)",
+        locked BOOL NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
     query(
-        "INSERT INTO v_state(id, started)
+        "INSERT INTO v_state(id, locked)
     VALUES (0, FALSE) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
@@ -239,7 +239,7 @@ pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()
     let mut db_tx = conn.begin().await?;
     query(
         "UPDATE v_state SET url = NULL,
-    account = NULL, started = 0 WHERE id = 0",
+    account = NULL, locked = 0 WHERE id = 0",
     )
     .execute(&mut *db_tx)
     .await?;
