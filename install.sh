@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
-# Requirements: pkill, curl, xz, tar, jq, grpcurl
+# Requirements: pkill, curl, go, jq, grpcurl
 
 DIR=
 EXTERNAL_IP=
@@ -14,10 +14,16 @@ usage() {
   echo ""
   echo "Commands:"
   echo "  download         Download and install the binaries"
-  echo "  setup            Download and configure as a full node"
-  echo "  connect          Connect and join as a standard full node"
+  echo "  set-node-config  Download genesis and configure as a full node"
+  echo "  start            Start and join as a standard full node"
   echo "  promote          Promote to validator"
   echo "  show-validators  Show the validator set"
+  echo "Coordinator Commands:"
+  echo "  coordinate       Configure as coordinator"
+  echo "  set-election     Set the Election Definition"
+  echo "  lock             Lock the Blockchain against further updates"
+
+
   echo ""
   exit 1
 }
@@ -60,20 +66,24 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   usage
 fi
 
-BIN_DIR=$HOME/go/bin
-#BIN_DIR=./zcv
+#BIN_DIR=$HOME/go/bin
+BIN_DIR=./zcv
 
-mkdir -p $DIR
+mkdir -p $DIR/zcv/protos
 cd $DIR
 
 case "$COMMAND" in
   download)
     echo "Installing binaries..."
-    curl -L -o zcv.tar.xz "https://www.dropbox.com/scl/fi/xl5lofrpfhy8rbm6av00a/zcv.tar.xz?rlkey=aesaupmis374gmwtpsx5g7ira&st=f4crow7z&dl=1"
-    tar xvf zcv.tar.xz
+    cp "$(go env GOPATH)/bin/cometbft" zcv/
+
+    curl -L -o zcv/vote-cometbft "https://github.com/hhanh00/zcv/releases/download/zcvlib-v0.5.0/vote-cometbft"
+    curl -L -o zcv/protos/vote.proto "https://raw.githubusercontent.com/hhanh00/zcv/refs/tags/zcvlib-v0.5.0/zcvlib/protos/vote.proto"
+    chmod +x zcv/vote-cometbft
     $BIN_DIR/cometbft init --home cometbft
     ;;
-  setup)
+
+  set-seed)
     missing=()
     [[ -z "$SEED" ]]         && missing+=("--seed")
     [[ -z "$GENESIS_URL" ]]  && missing+=("--genesis-url")
@@ -88,14 +98,14 @@ case "$COMMAND" in
     ;;
 
   coordinate)
-    echo "Configure as seed"
+    echo "Configure as seeder"
     echo "Upload the $DIR/cometbft/config/genesis.json file to the cloud"
     echo "The seed URL is"
     NODEID=$($BIN_DIR/cometbft show-node-id --home cometbft)
     echo "$NODEID@$EXTERNAL_IP:26656"
     ;;
 
-  configure)
+  set-election)
     echo "Configure the election"
     missing=()
     [[ -z "$ELECTION_JSON" ]] && missing+=("--election-json")
@@ -111,7 +121,7 @@ case "$COMMAND" in
     grpcurl --plaintext --proto zcv/protos/vote.proto -d "$ELECTION_REQ" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
     ;;
 
-  connect)
+  start)
     echo "Starting node..."
     echo "The node will continue to run"
     echo "Run tail -f $DIR/vote.log to check its status"
