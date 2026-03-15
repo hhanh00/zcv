@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/hhanh00/zcv/compare/zcv-setup-v0.1.1...zcv-setup-v0.2.0) (2026-03-15)
+
+
+### Features
+
+* add docker ci ([#156](https://github.com/hhanh00/zcv/issues/156)) ([b7f2821](https://github.com/hhanh00/zcv/commit/b7f28211d3064f990f51f029b072c93b8e7ce916))
+
 ## [0.1.1](https://github.com/hhanh00/zcv/compare/zcv-setup-v0.1.0...zcv-setup-v0.1.1) (2026-02-19)
 
 
