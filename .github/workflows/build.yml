@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - v*
+      - "zcvlib-v*"
 
 jobs:
   build-linux:
@@ -19,7 +19,7 @@ jobs:
         run: |
           cargo build --release
       - name: Create Release
-        if: startsWith(github.ref_name, 'v')
+        if: startsWith(github.ref_name, 'zcvlib-v')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
