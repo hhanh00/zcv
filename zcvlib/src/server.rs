@@ -114,6 +114,10 @@ impl Application for Server {
             let msg = msg.type_oneof.ok_or(anyhow!("Must have payload"))?;
             let res = match msg {
                 TypeOneof::SetElection(election) => {
+                    let state = self.state.lock().await;
+                    if state.locked {
+                        anyhow::bail!("Election cannot be added once the blockchain is locked.");
+                    }
                     let election: ElectionPropsPub = serde_json::from_str(&election.election)?;
                     election.domain.clone()
                 }
