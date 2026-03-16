@@ -57,7 +57,7 @@ by the election organizer)
 ```
 ./install.sh download --dir seed --external-ip 100.78.211.68
 ./install.sh coordinate --dir seed --external-ip 100.78.211.68
-./install.sh run --dir seed --external-ip 100.78.211.68
+./install.sh start --dir seed --external-ip 100.78.211.68
 <wait about 30s for the node to start>
 ./install.sh set-election --dir seed --external-ip 100.78.211.68 \
   --election-json election-pub.json

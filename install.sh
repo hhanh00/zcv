@@ -77,7 +77,7 @@ case "$COMMAND" in
     $BIN_DIR/cometbft init --home cometbft
     ;;
 
-  set-seed)
+  set-node-config)
     missing=()
     [[ -z "$SEED" ]]         && missing+=("--seed")
     [[ -z "$GENESIS_URL" ]]  && missing+=("--genesis-url")
