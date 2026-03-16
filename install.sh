@@ -2,12 +2,6 @@
 
 # Requirements: pkill, curl, go, jq, grpcurl
 
-DIR=
-EXTERNAL_IP=
-ELECTION_JSON=
-SEED=
-GENESIS_URL=
-
 # --- Usage ---
 usage() {
   echo "Usage: $(basename "$0") <command> [options]"
@@ -83,7 +77,7 @@ case "$COMMAND" in
     $BIN_DIR/cometbft init --home cometbft
     ;;
 
-  set-seed)
+  set-node-config)
     missing=()
     [[ -z "$SEED" ]]         && missing+=("--seed")
     [[ -z "$GENESIS_URL" ]]  && missing+=("--genesis-url")
