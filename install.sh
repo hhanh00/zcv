@@ -2,12 +2,6 @@
 
 # Requirements: pkill, curl, go, jq, grpcurl
 
-DIR=
-EXTERNAL_IP=
-ELECTION_JSON=
-SEED=
-GENESIS_URL=
-
 # --- Usage ---
 usage() {
   echo "Usage: $(basename "$0") <command> [options]"
