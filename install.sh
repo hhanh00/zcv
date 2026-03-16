@@ -16,7 +16,7 @@ usage() {
   echo "  coordinate       Configure as coordinator"
   echo "  set-election     Set the Election Definition"
   echo "  lock             Lock the Blockchain against further updates"
-
+  echo "  unsafe-reset     Delete all data and reset"
 
   echo ""
   exit 1
@@ -137,6 +137,12 @@ case "$COMMAND" in
 
   show-validators)
     curl -s localhost:26657/validators | jq .result
+    ;;
+
+  unsafe-reset)
+    pkill cometbft
+    rm vote.db
+    $BIN_DIR/cometbft unsafe-reset-all --home cometbft
     ;;
 
   *)
