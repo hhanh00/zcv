@@ -4,10 +4,6 @@
     "zcvlib": {
       "release-type": "rust",
       "changelog-path": "CHANGELOG.md"
-    },
-    "setup": {
-      "release-type": "rust",
-      "changelog-path": "CHANGELOG.md"
     }
   },
   "changelog-sections": [
