@@ -29,6 +29,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         account INTEGER,
         url TEXT,
         apphash BLOB,
+        height INTEGER,
         locked BOOL NOT NULL)",
     )
     .execute(&mut *conn)
@@ -293,16 +294,21 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
     Ok((domain, address))
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<Option<Vec<u8>>> {
-    let apphash = query_as::<_, (Vec<u8>,)>("SELECT apphash FROM v_state WHERE id = 0")
-        .fetch_optional(conn)
-        .await?
-        .map(|v| v.0);
-    Ok(apphash)
+pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
+    let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
+        .map(|r: SqliteRow| {
+            let height: Option<u32> = r.get(0);
+            let apphash: Option<Vec<u8>> = r.get(1);
+            (height, apphash)
+        })
+        .fetch_one(conn)
+        .await?;
+    Ok((height, apphash))
 }
 
-pub async fn store_apphash(conn: &mut SqliteConnection, apphash: &[u8]) -> ZCVResult<()> {
-    query("UPDATE v_state SET apphash = ?1 WHERE id = 0")
+pub async fn store_apphash(conn: &mut SqliteConnection, height: u32, apphash: &[u8]) -> ZCVResult<()> {
+    query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
+        .bind(height)
         .bind(apphash)
         .execute(conn)
         .await?;

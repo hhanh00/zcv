@@ -19,7 +19,7 @@ use ff::PrimeField;
 use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
 use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
-use prost::Message;
+use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
 use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
 use std::{
@@ -94,7 +94,22 @@ impl ServerState {
 
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
-        Default::default()
+        let rt = Runtime::new().unwrap();
+        let (height, apphash) = rt.block_on(async move {
+            let state = self.state.lock().await;
+            let mut conn = state.pool.acquire().await?;
+            let (height, apphash) = get_apphash(&mut conn).await?;
+            Ok::<_, ZCVError>((height, apphash))
+        }).expect("Could not get app state");
+        let height = height.unwrap_or_default();
+        let apphash = apphash.unwrap_or_default();
+        tracing::info!("Starting @{height} apphash {}", hex::encode(&apphash));
+
+        ResponseInfo {
+            last_block_height: height as i64,
+            last_block_app_hash: Bytes::from(apphash),
+            ..Default::default()
+        }
     }
 
     // Checks if a tx is structurally correct
@@ -131,7 +146,13 @@ impl Application for Server {
                         let state = self.state.lock().await;
                         let election = state.election.clone().ok_or(anyhow!("Election not set"))?;
                         let cache = state.check_witnesses_cache.clone();
-                        (election, cache, state.domain, state.nf_root, state.skip_validation)
+                        (
+                            election,
+                            cache,
+                            state.domain,
+                            state.nf_root,
+                            state.skip_validation,
+                        )
                     };
                     ServerState::check_ballot(
                         &mut conn,
@@ -284,13 +305,14 @@ impl Application for Server {
         } = request;
         tracing::info!("Hash {} height {height}", hex::encode(&hash));
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let (tx_results, validator_updates) = rt
+        let (app_hash, tx_results, validator_updates) = rt
             .block_on(async move {
                 let mut state = self.state.lock().await;
                 let mut validator_updates = vec![];
                 let mut conn = state.pool.acquire().await?;
                 let mut db_tx = conn.begin().await?;
-                let apphash = get_apphash(&mut db_tx).await?.unwrap_or_default();
+                let (_, apphash) = get_apphash(&mut db_tx).await?;
+                let apphash = apphash.unwrap_or_default();
                 let mut hasher = Params::new()
                     .personal(b"ZCVote___AppHash")
                     .hash_length(32)
@@ -413,18 +435,19 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, &apphash).await.unwrap();
+                store_apphash(&mut db_tx, height as u32, &apphash).await.unwrap();
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes()).await?;
 
                 db_tx.commit().await?;
                 state.clear_check_witnesses();
-                Ok::<_, ZCVError>((tx_results, validator_updates))
+                Ok::<_, ZCVError>((apphash, tx_results, validator_updates))
             })
             .expect("Fatal Failure in FinalizeBlock");
 
         ResponseFinalizeBlock {
             tx_results,
             validator_updates,
+            app_hash: Bytes::from(app_hash),
             ..ResponseFinalizeBlock::default()
         }
     }
@@ -507,7 +530,16 @@ impl ServerState {
         cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
         skip_validation: bool,
     ) -> ZCVResult<()> {
-        Self::check_witnesses(conn, election, &ballot, e_domain, e_nf_root, cache, skip_validation).await?;
+        Self::check_witnesses(
+            conn,
+            election,
+            &ballot,
+            e_domain,
+            e_nf_root,
+            cache,
+            skip_validation,
+        )
+        .await?;
         for a in ballot.data.actions {
             tracing::info!("Action NF: {}", hex::encode(a.nf));
             let exists = check_dup_nf(conn, a.nf.as_slice()).await?;
