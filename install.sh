@@ -71,8 +71,8 @@ case "$COMMAND" in
     echo "Installing binaries..."
     cp "$(go env GOPATH)/bin/cometbft" zcv/
 
-    curl -L -o zcv/vote-cometbft "https://github.com/hhanh00/zcv/releases/download/zcvlib-v0.5.1/vote-cometbft"
-    curl -L -o zcv/protos/vote.proto "https://raw.githubusercontent.com/hhanh00/zcv/refs/tags/zcvlib-v0.5.1/zcvlib/protos/vote.proto"
+    curl -L -o zcv/vote-cometbft "https://github.com/hhanh00/zcv/releases/download/zcvlib-v0.5.2/vote-cometbft"
+    curl -L -o zcv/protos/vote.proto "https://raw.githubusercontent.com/hhanh00/zcv/refs/tags/zcvlib-v0.5.2/zcvlib/protos/vote.proto"
     chmod +x zcv/vote-cometbft
     $BIN_DIR/cometbft init --home cometbft
     ;;
