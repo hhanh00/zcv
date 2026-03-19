@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1](https://github.com/hhanh00/zcv/compare/zcvlib-v0.5.0...zcvlib-v0.5.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* apphash should be saved to db and recovered at startup ([#171](https://github.com/hhanh00/zcv/issues/171)) ([7cc3570](https://github.com/hhanh00/zcv/commit/7cc357002a9f39cb6495088d40d6781e352725fb))
+
 ## [0.5.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.4.0...zcvlib-v0.5.0) (2026-03-15)
 
 
