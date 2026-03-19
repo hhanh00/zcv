@@ -89,6 +89,7 @@ case "$COMMAND" in
 
     curl -L -o cometbft/config/genesis.json "$GENESIS_URL"
     sed -i -e "s#seeds = \"\"#seeds = \"$SEED\"#" cometbft/config/config.toml
+    sed -i -e "s#external_address = \"\"#external_address = \"$EXTERNAL_IP:26656\"#" cometbft/config/config.toml
     ;;
 
   coordinate)
