@@ -21,7 +21,7 @@ use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
-use sqlx::{Acquire, SqliteConnection, SqlitePool, query, query_as};
+use sqlx::{Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     io::{Cursor, Read},
@@ -33,8 +33,8 @@ use tendermint_abci::{Application, ServerBuilder};
 use tendermint_proto::{
     abci::{
         ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
-        RequestProcessProposal, ResponseCheckTx, ResponseFinalizeBlock, ResponseInfo,
-        ResponsePrepareProposal, ResponseProcessProposal, ValidatorUpdate,
+        RequestProcessProposal, ResponseCheckTx, ResponseCommit, ResponseFinalizeBlock,
+        ResponseInfo, ResponsePrepareProposal, ResponseProcessProposal, ValidatorUpdate,
         response_process_proposal::ProposalStatus,
     },
     crypto::{PublicKey, public_key::Sum},
@@ -69,6 +69,8 @@ pub struct ServerState {
     pub domain: Fp,
     pub nf_root: MerkleHashOrchard,
     pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
+
+    pub db_tx: Option<Transaction<'static, Sqlite>>,
 }
 
 impl ServerState {
@@ -88,6 +90,7 @@ impl ServerState {
             domain: Fp::zero(),
             nf_root: MerkleHashOrchard::empty_leaf(),
             cmx_tree: Frontier::empty(),
+            db_tx: None,
         })
     }
 }
@@ -95,12 +98,14 @@ impl ServerState {
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
         let rt = Runtime::new().unwrap();
-        let (height, apphash) = rt.block_on(async move {
-            let state = self.state.lock().await;
-            let mut conn = state.pool.acquire().await?;
-            let (height, apphash) = get_apphash(&mut conn).await?;
-            Ok::<_, ZCVError>((height, apphash))
-        }).expect("Could not get app state");
+        let (height, apphash) = rt
+            .block_on(async move {
+                let state = self.state.lock().await;
+                let mut conn = state.pool.acquire().await?;
+                let (height, apphash) = get_apphash(&mut conn).await?;
+                Ok::<_, ZCVError>((height, apphash))
+            })
+            .expect("Could not get app state");
         let height = height.unwrap_or_default();
         let apphash = apphash.unwrap_or_default();
         tracing::info!("Starting @{height} apphash {}", hex::encode(&apphash));
@@ -309,8 +314,7 @@ impl Application for Server {
             .block_on(async move {
                 let mut state = self.state.lock().await;
                 let mut validator_updates = vec![];
-                let mut conn = state.pool.acquire().await?;
-                let mut db_tx = conn.begin().await?;
+                let mut db_tx = state.pool.begin().await?;
                 let (_, apphash) = get_apphash(&mut db_tx).await?;
                 let apphash = apphash.unwrap_or_default();
                 let mut hasher = Params::new()
@@ -435,11 +439,13 @@ impl Application for Server {
                     tx_results.push(result);
                 }
                 let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, height as u32, &apphash).await.unwrap();
+                store_apphash(&mut db_tx, height as u32, &apphash)
+                    .await
+                    .unwrap();
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes()).await?;
 
-                db_tx.commit().await?;
                 state.clear_check_witnesses();
+                state.db_tx = Some(db_tx);
                 Ok::<_, ZCVError>((apphash, tx_results, validator_updates))
             })
             .expect("Fatal Failure in FinalizeBlock");
@@ -450,6 +456,18 @@ impl Application for Server {
             app_hash: Bytes::from(app_hash),
             ..ResponseFinalizeBlock::default()
         }
+    }
+
+    fn commit(&self) -> ResponseCommit {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut state = self.state.lock().await;
+            if let Some(db_tx) = state.db_tx.take() {
+                db_tx.commit().await?;
+            }
+            Ok::<_, ZCVError>(())
+        }).expect("DB Commit failed");
+        ResponseCommit::default()
     }
 }
 
