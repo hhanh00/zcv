@@ -278,7 +278,6 @@ pub async fn scan_ballots(
     let mut position = crate::db::get_election_position(&mut db_tx).await?;
 
     while let Some(ballot) = ballots.message().await? {
-        tracing::info!("Ballot @{}", ballot.height);
         let height = ballot.height;
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
@@ -286,7 +285,6 @@ pub async fn scan_ballots(
         for a in data.actions.iter() {
             // do not store nf since we are on the voting chain
             store_cmx(&mut db_tx, &a.cmx).await?;
-            tracing::info!("-nf: {}", hex::encode(a.nf));
             if let Some(id_account) = nfs.get(&a.nf) {
                 store_ballot_spend(&mut db_tx, *id_account, &a.nf, height).await?;
             }
@@ -346,7 +344,6 @@ pub async fn decode_ballots(
         .into_inner();
 
     while let Some(ballot) = ballots.message().await? {
-        tracing::info!("Ballot @{}", ballot.height);
         let height = ballot.height;
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;

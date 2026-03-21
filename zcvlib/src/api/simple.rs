@@ -33,6 +33,12 @@ pub async fn client_delete_election(context: &Context) -> Result<()> {
     Ok(())
 }
 
+pub async fn client_delete_election_data(context: &Context, new_account: Option<u32>) -> Result<()> {
+    let mut conn = context.connect().await?;
+    crate::db::client_delete_election_data(&mut conn, new_account).await?;
+    Ok(())
+}
+
 pub async fn scan_notes<PR: ProgressReporter>(id_accounts: Vec<u32>, pr: &PR, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let mut client = connect(&context.lwd_url).await?;
