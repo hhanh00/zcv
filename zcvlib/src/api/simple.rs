@@ -6,7 +6,7 @@ use zcash_protocol::consensus::Network;
 
 use crate::api::ProgressReporter;
 use crate::context::Context;
-use crate::db::{get_election, get_election_height};
+use crate::db::get_election_height;
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::vote::VoteResultItem;
@@ -78,7 +78,8 @@ pub async fn decode_ballots(election_seed: String, context: &Context) -> Result<
     let mut conn = context.connect().await?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
-    let election = get_election(&mut conn).await?;
+    let election = client.get_election(Request::new(Empty {})).await?.into_inner();
+    let election: ElectionPropsPub = serde_json::from_str(&election.election)?;
     let start = election.end;
     let rep = client
         .get_latest_vote_height(Request::new(Empty {}))
