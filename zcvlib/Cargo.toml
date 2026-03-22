@@ -17,6 +17,10 @@ path = "src/voter-cli.rs"
 name = "creator"
 path = "src/creator-cli.rs"
 
+[[bin]]
+name = "counter"
+path = "src/counter-cli.rs"
+
 [dependencies]
 # flutter_rust_bridge = "=2.11.1"
 
@@ -67,6 +71,8 @@ warp = { workspace = true }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
+
+csv = "1.4"
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
