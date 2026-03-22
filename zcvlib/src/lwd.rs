@@ -335,6 +335,10 @@ pub async fn decode_ballots(
     let ivk = fvk.to_ivk(Scope::External);
     let pivk = PreparedIncomingViewingKey::new(&ivk);
 
+    query("DELETE FROM v_results")
+    .execute(&mut *db_tx)
+    .await?;
+
     let mut ballots = client
         .get_vote_range(Request::new(VoteRange {
             start: (start + 1),
