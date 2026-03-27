@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bigdecimal::{BigDecimal, Zero, num_bigint::BigInt};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use zcvlib::{
@@ -58,7 +59,7 @@ pub async fn main() -> Result<()> {
     }
     let nrows = max_rows as usize + 1;
     let ncols = max_cols as usize;
-    let mut results = vec![0u64; nrows * ncols];
+    let mut results = vec![BigDecimal::zero(); nrows * ncols];
 
     for tally_item in tally_items {
         let VoteResultItem {
@@ -66,7 +67,9 @@ pub async fn main() -> Result<()> {
             idx_answer,
             votes,
         } = tally_item;
-        results[idx_question as usize * ncols + idx_answer as usize - 1] = votes;
+        let v = BigDecimal::from_bigint(
+            BigInt::from(votes), 8);
+        results[idx_question as usize * ncols + idx_answer as usize - 1] = v;
     }
 
     let mut wtr = csv::Writer::from_writer(vec![]);

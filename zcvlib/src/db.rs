@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use bech32::{Bech32m, Hrp};
 use bip39::Mnemonic;
 use ff::PrimeField;
@@ -22,10 +22,61 @@ use crate::{
     tiu,
 };
 
+async fn column_exists(
+    conn: &mut SqliteConnection,
+    table: &str,
+    column: &str,
+) -> ZCVResult<Option<bool>> {
+    let rows = query(&format!("PRAGMA table_info({})", table))
+        .fetch_all(conn)
+        .await?;
+    let exists = rows.iter().any(|row| {
+        let name: &str = row.try_get("name").unwrap_or_default();
+        name == column
+    });
+    Ok(Some(exists))
+}
+
+pub async fn drop_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
+    for table in &[
+        "v_state",
+        "v_elections",
+        "v_notes",
+        "v_spends",
+        "v_ballots",
+        "v_actions",
+        "vc_nfs",
+        "vc_cmxs",
+        "v_results",
+        "v_final_results",
+    ] {
+        query(&format!("DROP TABLE IF EXISTS {table}"))
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
+
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
+    let version = if let Some(has_version) = column_exists(conn, "v_state", "version").await?
+        && has_version
+    {
+        let (version,): (u32,) = query_as("SELECT version FROM v_state WHERE id = 0")
+            .fetch_one(&mut *conn)
+            .await?;
+        version
+    } else {
+        0
+    };
+
+    if version != 1 {
+        drop_schema(&mut *conn).await?;
+    }
+
     query(
         "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
+        version INTEGER,
         account INTEGER,
         url TEXT,
         apphash BLOB,
@@ -35,8 +86,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
     query(
-        "INSERT INTO v_state(id, locked)
-    VALUES (0, FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO v_state(id, version, locked)
+    VALUES (0, 1, FALSE) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
@@ -236,19 +287,22 @@ pub async fn store_election(
     Ok(())
 }
 
-pub async fn client_delete_election_data(conn: &mut SqliteConnection, new_account: Option<u32>) -> ZCVResult<()> {
+pub async fn client_delete_election_data(
+    conn: &mut SqliteConnection,
+    new_account: Option<u32>,
+) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
-    query(
-        "UPDATE v_state SET account = ?1 WHERE id = 0",
-    )
-    .bind(new_account)
-    .execute(&mut *db_tx)
-    .await?;
+    query("UPDATE v_state SET account = ?1 WHERE id = 0")
+        .bind(new_account)
+        .execute(&mut *db_tx)
+        .await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
     query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
     query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
-    query("UPDATE v_elections SET height = start - 1 WHERE id_election = 0").execute(&mut *db_tx).await?;
+    query("UPDATE v_elections SET height = start - 1 WHERE id_election = 0")
+        .execute(&mut *db_tx)
+        .await?;
 
     db_tx.commit().await?;
     Ok(())
@@ -324,7 +378,11 @@ pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>,
     Ok((height, apphash))
 }
 
-pub async fn store_apphash(conn: &mut SqliteConnection, height: u32, apphash: &[u8]) -> ZCVResult<()> {
+pub async fn store_apphash(
+    conn: &mut SqliteConnection,
+    height: u32,
+    apphash: &[u8],
+) -> ZCVResult<()> {
     query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
         .bind(height)
         .bind(apphash)
@@ -342,7 +400,7 @@ pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8]) -> ZCVResul
 }
 
 pub async fn check_cmx_root(conn: &mut SqliteConnection, cmx_root: &[u8]) -> ZCVResult<()> {
-    let exist: Option<(bool, )> = query_as("SELECT 1 FROM vs_cmxs WHERE cmx = ?1")
+    let exist: Option<(bool,)> = query_as("SELECT 1 FROM vs_cmxs WHERE cmx = ?1")
         .bind(cmx_root)
         .fetch_optional(conn)
         .await?;
@@ -707,4 +765,3 @@ mod tests {
         Ok(())
     }
 }
-
