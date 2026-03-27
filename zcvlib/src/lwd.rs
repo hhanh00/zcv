@@ -73,6 +73,9 @@ pub async fn initial_scan(
     let mut nfs = vec![];
     let mut cmx_tree = Frontier::<MerkleHashOrchard, 32>::empty();
     while let Some(block) = blocks.message().await? {
+        if block.height % 10_000 == 0 {
+            tracing::info!("initial_scan: @{}", block.height);
+        }
         for tx in block.vtx {
             for a in tx.actions {
                 let CompactOrchardAction { nullifier, cmx, .. } = a;
