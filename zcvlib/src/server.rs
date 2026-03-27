@@ -2,10 +2,12 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, store_apphash, store_ballot, store_cmx_root, store_election,
-        store_election_height_inc_position,
+        check_cmx_root, get_apphash, get_election_opt, get_roots, store_apphash,
+        store_ballot, store_cmx_root, store_election, store_election_height_inc_position,
+        store_roots,
     },
     error::IntoAnyhow,
+    lwd::initial_scan,
     pod::ElectionPropsPub,
     tiu,
     vote::VK,
@@ -21,7 +23,7 @@ use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
-use sqlx::{Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as};
+use sqlx::{Acquire, Row, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as, sqlite::SqliteRow};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     io::{Cursor, Read},
@@ -52,8 +54,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool, skip_validation: bool) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, skip_validation).await?;
+    pub async fn new(pool: SqlitePool, lwd_url: &str, skip_validation: bool) -> ZCVResult<Self> {
+        let server = ServerState::new(pool, lwd_url, skip_validation).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -74,22 +76,64 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool, skip_validation: bool) -> ZCVResult<Self> {
+    pub async fn new(pool: SqlitePool, lwd_url: &str, skip_validation: bool) -> ZCVResult<Self> {
         let mut conn = pool.acquire().await?;
         let (locked,): (bool,) = query_as("SELECT locked FROM v_state WHERE id = 0")
             .fetch_one(&mut *conn)
             .await
             .context("get locked")?;
 
+        // TODO: Recover state from db
+        // election <- v_elections
+        // domain <- election.domain
+        // nf_root <- need to scan again
+        // cmx_tree <- need to scan again
+        // replay actions in height, ballot, idx order and append cmx
+
+        // save nf_root, cmx_tree in v_elections table
+        // (add column if needed)
+
+        let election = get_election_opt(&mut conn).await?;
+        let (domain, nf_root, cmx_tree) = match election.as_ref() {
+            Some(election) => {
+                let domain = Fp::from_repr(tiu!(election.domain.clone())).unwrap();
+                let (nf_root, cmx_tree) = match get_roots(&mut conn).await? {
+                    Some((nf_root, cmx_tree)) => (nf_root, cmx_tree),
+                    None => {
+                        let mut client = crate::lwd::connect(lwd_url).await?;
+                        let (nf_root, cmx_tree) =
+                            initial_scan(&mut client, election.start, election.end).await.unwrap();
+                        store_roots(&mut conn, &nf_root, &cmx_tree).await.unwrap();
+                        (nf_root, cmx_tree)
+                    }
+                };
+                let (nf_root, mut cmx_tree) = read_roots(&nf_root, &cmx_tree).unwrap();
+                tracing::info!("{:?} {:?}", nf_root, cmx_tree.root());
+
+                let cmxs = query("SELECT cmx FROM v_actions ORDER BY height, ballot, idx")
+                .map(|r: SqliteRow| r.get::<Vec<u8>, _>(0))
+                .fetch_all(&mut *conn)
+                .await?;
+                for cmx in cmxs {
+                    let cmx = Fp::from_repr(tiu!(cmx)).unwrap();
+                    cmx_tree.append(MerkleHashOrchard::from_base(cmx));
+                }
+                tracing::info!("{:?}", cmx_tree.root());
+
+                (domain, nf_root, cmx_tree)
+            }
+            None => (Fp::zero(), MerkleHashOrchard::empty_leaf(), Frontier::empty())
+        };
+
         Ok(Self {
             pool,
             locked,
-            election: None,
+            election,
             skip_validation,
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
-            domain: Fp::zero(),
-            nf_root: MerkleHashOrchard::empty_leaf(),
-            cmx_tree: Frontier::empty(),
+            domain,
+            nf_root,
+            cmx_tree,
             db_tx: None,
         })
     }
@@ -169,6 +213,7 @@ impl Application for Server {
                         skip_validation,
                     )
                     .await?;
+                    tracing::info!("Ballot checked");
                     hash
                 }
                 TypeOneof::AddValidator(v) => {
@@ -233,6 +278,10 @@ impl Application for Server {
                     let m = msg.type_oneof.expect("VoteMessage must have content");
                     if let TypeOneof::Ballot(ballot) = m {
                         let ballot = from_protobuf(&ballot).anyhow()?;
+                        tracing::info!(
+                            "Proposing ballot {}...",
+                            hex::encode(ballot.data.sighash()?)
+                        );
                         for a in ballot.data.actions {
                             let nf: [u8; 32] = tiu!(a.nf);
                             // Do not include double spend mempool tx
@@ -249,6 +298,7 @@ impl Application for Server {
                     }
                     proposed_len += tx.len();
                     proposed_txs.push(tx);
+                    tracing::info!("... Added");
                 }
                 Ok::<_, anyhow::Error>(proposed_txs)
             })
@@ -293,14 +343,16 @@ impl Application for Server {
             db_tx.rollback().await?;
             Ok::<_, anyhow::Error>(())
         });
-        match res {
+        let status = match res {
             Ok(_) => ResponseProcessProposal {
                 status: ProposalStatus::Accept as i32,
             },
             Err(_) => ResponseProcessProposal {
                 status: ProposalStatus::Reject as i32,
             },
-        }
+        };
+        tracing::info!("{status:?}");
+        status
     }
 
     // Process the block that was voted on by the validators
@@ -308,7 +360,11 @@ impl Application for Server {
         let RequestFinalizeBlock {
             txs, hash, height, ..
         } = request;
-        tracing::info!("Hash {} height {height}", hex::encode(&hash));
+        tracing::info!(
+            "Hash {} height {height} {} txs",
+            hex::encode(&hash),
+            txs.len()
+        );
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (app_hash, tx_results, validator_updates) = rt
             .block_on(async move {
@@ -338,21 +394,10 @@ impl Application for Server {
                                     cmx_tree_state,
                                 } = election;
                                 tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
-                                let nf_root =
-                                    MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
-                                let mut c = Cursor::new(cmx_tree_state);
-                                let p = c.read_u64::<LE>()?;
-                                let p: Position = p.into();
-                                let mut l = [0u8; 32];
-                                c.read_exact(&mut l)?;
-                                let l = MerkleHashOrchard::from_bytes(&l).unwrap();
-                                let o = Vector::read(c, |c| {
-                                    let mut l = [0u8; 32];
-                                    c.read_exact(&mut l)?;
-                                    Ok(MerkleHashOrchard::from_bytes(&l).unwrap())
-                                })?;
-                                let cmx_tree =
-                                    Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
+                                store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
+
+                                let (nf_root, cmx_tree) = read_roots(&nf_root, &cmx_tree_state)?;
+
                                 let cmx_root = cmx_tree.root();
                                 tracing::info!("CMX ROOT: {}", hex::encode(cmx_root.to_bytes()));
                                 store_cmx_root(&mut db_tx, &cmx_root.to_bytes()).await?;
@@ -466,7 +511,8 @@ impl Application for Server {
                 db_tx.commit().await?;
             }
             Ok::<_, ZCVError>(())
-        }).expect("DB Commit failed");
+        })
+        .expect("DB Commit failed");
         ResponseCommit::default()
     }
 }
@@ -478,6 +524,23 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
         .await?
         .is_some();
     Ok(exists)
+}
+
+fn read_roots(nf_root: &[u8], cmx_tree: &[u8]) -> ZCVResult<(MerkleHashOrchard, incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>)> {
+    let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
+    let mut c = Cursor::new(cmx_tree);
+    let p = c.read_u64::<LE>().anyhow()?;
+    let p: Position = p.into();
+    let mut l = [0u8; 32];
+    c.read_exact(&mut l).anyhow()?;
+    let l = MerkleHashOrchard::from_bytes(&l).unwrap();
+    let o = Vector::read(c, |c| {
+        let mut l = [0u8; 32];
+        c.read_exact(&mut l)?;
+        Ok(MerkleHashOrchard::from_bytes(&l).unwrap())
+    }).anyhow()?;
+    let cmx_tree = Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
+    Ok((nf_root, cmx_tree))
 }
 
 impl ServerState {
@@ -627,11 +690,11 @@ pub async fn run_cometbft_app(
     context: Arc<tokio::sync::Mutex<BFTContext>>,
     port: u16,
 ) -> ZCVResult<()> {
-    let (pool, skip_validation) = {
+    let (pool, lwd_url, skip_validation) = {
         let c = context.lock().await;
-        (c.context.pool.clone(), c.skip_validation)
+        (c.context.pool.clone(), c.context.lwd_url.clone(), c.skip_validation)
     };
-    let app = Server::new(pool, skip_validation).await?;
+    let app = Server::new(pool, &lwd_url, skip_validation).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

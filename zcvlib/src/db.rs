@@ -58,7 +58,7 @@ pub async fn drop_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
 }
 
 pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
-    let version = if let Some(has_version) = column_exists(conn, "v_state", "version").await?
+    let mut version = if let Some(has_version) = column_exists(conn, "v_state", "version").await?
         && has_version
     {
         let (version,): (u32,) = query_as("SELECT version FROM v_state WHERE id = 0")
@@ -68,6 +68,11 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     } else {
         0
     };
+
+    // Work around schema change prior to version tag
+    if column_exists(conn, "v_state", "locked").await? == Some(true) {
+        version = 1;
+    }
 
     if version != 1 {
         drop_schema(&mut *conn).await?;
@@ -85,6 +90,19 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+
+    let _ = query("ALTER TABLE v_state ADD COLUMN version INTEGER")
+        .execute(&mut *conn)
+        .await;
+
+    let _ = query("ALTER TABLE v_elections ADD COLUMN nf_root BLOB")
+        .execute(&mut *conn)
+        .await;
+
+    let _ = query("ALTER TABLE v_elections ADD COLUMN cmx_tree BLOB")
+        .execute(&mut *conn)
+        .await;
+
     query(
         "INSERT INTO v_state(id, version, locked)
     VALUES (0, 1, FALSE) ON CONFLICT DO NOTHING",
@@ -346,11 +364,20 @@ pub async fn get_ivks(
 }
 
 pub async fn get_election(conn: &mut SqliteConnection) -> ZCVResult<ElectionPropsPub> {
-    let (election,): (String,) = query_as("SELECT data FROM v_elections WHERE id_election = 0")
-        .fetch_one(conn)
+    get_election_opt(conn)
+        .await?
+        .ok_or(anyhow!("No Election Set").into())
+}
+
+pub async fn get_election_opt(conn: &mut SqliteConnection) -> ZCVResult<Option<ElectionPropsPub>> {
+    let election = query("SELECT data FROM v_elections WHERE id_election = 0")
+        .map(|r: SqliteRow| r.get::<String, _>(0))
+        .fetch_optional(conn)
         .await
         .context("get_election")?;
-    let domain: ElectionPropsPub = serde_json::from_str(&election)?;
+    let domain = election
+        .map(|e| serde_json::from_str::<ElectionPropsPub>(&e))
+        .transpose()?;
     Ok(domain)
 }
 
@@ -386,6 +413,34 @@ pub async fn store_apphash(
     query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
         .bind(height)
         .bind(apphash)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
+    let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")
+        .map(|r: SqliteRow| {
+            let nf_root: Option<Vec<u8>> = r.get(0);
+            let cmx_tree: Option<Vec<u8>> = r.get(1);
+            (nf_root, cmx_tree)
+        })
+        .fetch_one(&mut *conn)
+        .await?;
+    if let Some(nf_root) = nf_root {
+        return Ok(Some((nf_root, cmx_tree.unwrap())));
+    }
+    Ok(None)
+}
+
+pub async fn store_roots(
+    conn: &mut SqliteConnection,
+    nf_root: &[u8],
+    cmx_tree: &[u8],
+) -> ZCVResult<()> {
+    query("UPDATE v_elections SET nf_root = ?1, cmx_tree = ?2 WHERE id_election = 0")
+        .bind(nf_root)
+        .bind(cmx_tree)
         .execute(conn)
         .await?;
     Ok(())
