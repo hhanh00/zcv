@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.5.2...zcvlib-v0.6.0) (2026-03-27)
+
+
+### Features
+
+* counter cli app ([#178](https://github.com/hhanh00/zcv/issues/178)) ([6f34ef0](https://github.com/hhanh00/zcv/commit/6f34ef0a13de1f42cba5975a7adec02ad7a3f664))
+* switch voting account & delete current data ([#176](https://github.com/hhanh00/zcv/issues/176)) ([b2567db](https://github.com/hhanh00/zcv/commit/b2567db75ac846e341084db604c451a8247f729a))
+
+
+### Bug Fixes
+
+* add election schema version check ([#179](https://github.com/hhanh00/zcv/issues/179)) ([dd8ffc0](https://github.com/hhanh00/zcv/commit/dd8ffc041512036ddd939fc4e9cd1e21ddab9f82))
+* recover election state (domain, nf_root, cmx_tree) on hot restart ([#180](https://github.com/hhanh00/zcv/issues/180)) ([4471e38](https://github.com/hhanh00/zcv/commit/4471e38f52471de2a920514e613f48351a4463ba))
+
 ## [0.5.2](https://github.com/hhanh00/zcv/compare/zcvlib-v0.5.1...zcvlib-v0.5.2) (2026-03-19)
 
 
