@@ -2,9 +2,8 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, get_election_opt, get_roots, store_apphash,
-        store_ballot, store_cmx_root, store_election, store_election_height_inc_position,
-        store_roots,
+        check_cmx_root, get_apphash, get_election_opt, get_roots, store_apphash, store_ballot,
+        store_cmx_root, store_election, store_election_height_inc_position, store_roots,
     },
     error::IntoAnyhow,
     lwd::initial_scan,
@@ -23,7 +22,10 @@ use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
-use sqlx::{Acquire, Row, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as, sqlite::SqliteRow};
+use sqlx::{
+    Acquire, Row, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as,
+    sqlite::SqliteRow,
+};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     io::{Cursor, Read},
@@ -102,7 +104,9 @@ impl ServerState {
                     None => {
                         let mut client = crate::lwd::connect(lwd_url).await?;
                         let (nf_root, cmx_tree) =
-                            initial_scan(&mut client, election.start, election.end).await.unwrap();
+                            initial_scan(&mut client, election.start, election.end)
+                                .await
+                                .unwrap();
                         store_roots(&mut conn, &nf_root, &cmx_tree).await.unwrap();
                         (nf_root, cmx_tree)
                     }
@@ -111,9 +115,9 @@ impl ServerState {
                 tracing::info!("{:?} {:?}", nf_root, cmx_tree.root());
 
                 let cmxs = query("SELECT cmx FROM v_actions ORDER BY height, ballot, idx")
-                .map(|r: SqliteRow| r.get::<Vec<u8>, _>(0))
-                .fetch_all(&mut *conn)
-                .await?;
+                    .map(|r: SqliteRow| r.get::<Vec<u8>, _>(0))
+                    .fetch_all(&mut *conn)
+                    .await?;
                 for cmx in cmxs {
                     let cmx = Fp::from_repr(tiu!(cmx)).unwrap();
                     cmx_tree.append(MerkleHashOrchard::from_base(cmx));
@@ -122,7 +126,11 @@ impl ServerState {
 
                 (domain, nf_root, cmx_tree)
             }
-            None => (Fp::zero(), MerkleHashOrchard::empty_leaf(), Frontier::empty())
+            None => (
+                Fp::zero(),
+                MerkleHashOrchard::empty_leaf(),
+                Frontier::empty(),
+            ),
         };
 
         Ok(Self {
@@ -373,125 +381,143 @@ impl Application for Server {
                 let mut db_tx = state.pool.begin().await?;
                 let (_, apphash) = get_apphash(&mut db_tx).await?;
                 let apphash = apphash.unwrap_or_default();
-                let mut hasher = Params::new()
-                    .personal(b"ZCVote___AppHash")
-                    .hash_length(32)
-                    .key(&apphash)
-                    .to_state();
                 let mut tx_results = vec![];
-                for (itx, mut tx) in txs.into_iter().enumerate() {
-                    let tx_copy = tx.clone();
-                    hasher.update(&tx_copy);
-                    let finalize = async {
-                        let msg = VoteMessage::decode(&mut tx)?;
-                        // expect was checked by check_tx
-                        let m = msg.type_oneof.expect("VoteMessage must have content");
-                        match m {
-                            TypeOneof::SetElection(election) => {
-                                let crate::vote_rpc::Election {
-                                    election,
-                                    nf_root,
-                                    cmx_tree_state,
-                                } = election;
-                                tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
-                                store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
+                let new_apphash = if txs.is_empty() {
+                    apphash.clone()
+                } else {
+                    let mut hasher = Params::new()
+                        .personal(b"ZCVote___AppHash")
+                        .hash_length(32)
+                        .key(&apphash)
+                        .to_state();
+                    for (itx, mut tx) in txs.into_iter().enumerate() {
+                        let tx_copy = tx.clone();
+                        hasher.update(&tx_copy);
+                        let finalize = async {
+                            let msg = VoteMessage::decode(&mut tx)?;
+                            // expect was checked by check_tx
+                            let m = msg.type_oneof.expect("VoteMessage must have content");
+                            match m {
+                                TypeOneof::SetElection(election) => {
+                                    let crate::vote_rpc::Election {
+                                        election,
+                                        nf_root,
+                                        cmx_tree_state,
+                                    } = election;
+                                    let election: ElectionPropsPub =
+                                        serde_json::from_str(&election)?;
+                                    store_election(&mut db_tx, &election).await?;
 
-                                let (nf_root, cmx_tree) = read_roots(&nf_root, &cmx_tree_state)?;
+                                    tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
+                                    store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
 
-                                let cmx_root = cmx_tree.root();
-                                tracing::info!("CMX ROOT: {}", hex::encode(cmx_root.to_bytes()));
-                                store_cmx_root(&mut db_tx, &cmx_root.to_bytes()).await?;
+                                    let (nf_root, cmx_tree) =
+                                        read_roots(&nf_root, &cmx_tree_state)?;
 
-                                let election: ElectionPropsPub = serde_json::from_str(&election)?;
-                                store_election(&mut db_tx, &election).await?;
-                                let domain = Fp::from_repr(tiu!(election.domain.clone())).unwrap();
+                                    let cmx_root = cmx_tree.root();
+                                    tracing::info!(
+                                        "CMX ROOT: {}",
+                                        hex::encode(cmx_root.to_bytes())
+                                    );
 
-                                state.election = Some(election);
-                                state.domain = domain;
-                                state.nf_root = nf_root;
-                                state.cmx_tree = cmx_tree;
-                            }
-                            TypeOneof::Ballot(ballot) => {
-                                tracing::info!("Incoming ballot");
-                                let ballot = from_protobuf(&ballot).anyhow()?;
-                                let hash = ballot.data.sighash()?;
-                                let election =
-                                    state.election.clone().ok_or(anyhow!("Election not set"))?;
-                                let h = election.end + height as u32;
-                                tracing::info!(
-                                    "Expected NF ROOT: {}",
-                                    hex::encode(state.nf_root.to_bytes())
-                                );
-                                tracing::info!(
-                                    "Expected CMX ROOT: {}",
-                                    hex::encode(state.cmx_tree.root().to_bytes())
-                                );
-                                ServerState::check_witnesses(
-                                    &mut db_tx,
-                                    &election,
-                                    &ballot,
-                                    state.domain,
-                                    state.nf_root,
-                                    state.check_witnesses_cache.clone(),
-                                    state.skip_validation,
-                                )
-                                .await?;
-                                for a in ballot.data.actions.iter() {
-                                    let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
-                                    state.cmx_tree.append(cmx);
+                                    store_cmx_root(&mut db_tx, &cmx_root.to_bytes(), election.end)
+                                        .await?;
+                                    let domain =
+                                        Fp::from_repr(tiu!(election.domain.clone())).unwrap();
+
+                                    state.election = Some(election);
+                                    state.domain = domain;
+                                    state.nf_root = nf_root;
+                                    state.cmx_tree = cmx_tree;
                                 }
-                                // This will catch and fail on a double spend because of the UNIQUE dnf
-                                let id_ballot =
-                                    store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
-                                if id_ballot.is_none() {
-                                    tracing::info!("Tx already inserted {}", hex::encode(&hash));
-                                }
-                                store_election_height_inc_position(&mut db_tx, h).await?;
-                            }
-                            TypeOneof::Lock(_) => {
-                                state.locked = true;
-                                query("UPDATE v_state SET locked = 1 WHERE id = 0")
-                                    .execute(&mut *db_tx)
+                                TypeOneof::Ballot(ballot) => {
+                                    tracing::info!("Incoming ballot");
+                                    let ballot = from_protobuf(&ballot).anyhow()?;
+                                    let hash = ballot.data.sighash()?;
+                                    let election = state
+                                        .election
+                                        .clone()
+                                        .ok_or(anyhow!("Election not set"))?;
+                                    let h = election.end + height as u32;
+                                    tracing::info!(
+                                        "Expected NF ROOT: {}",
+                                        hex::encode(state.nf_root.to_bytes())
+                                    );
+                                    tracing::info!(
+                                        "Expected CMX ROOT: {}",
+                                        hex::encode(state.cmx_tree.root().to_bytes())
+                                    );
+                                    ServerState::check_witnesses(
+                                        &mut db_tx,
+                                        &election,
+                                        &ballot,
+                                        state.domain,
+                                        state.nf_root,
+                                        state.check_witnesses_cache.clone(),
+                                        state.skip_validation,
+                                    )
                                     .await?;
+                                    for a in ballot.data.actions.iter() {
+                                        let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
+                                        state.cmx_tree.append(cmx);
+                                    }
+                                    // This will catch and fail on a double spend because of the UNIQUE dnf
+                                    let id_ballot =
+                                        store_ballot(&mut db_tx, h, itx as u32, ballot).await?;
+                                    if id_ballot.is_none() {
+                                        tracing::info!(
+                                            "Tx already inserted {}",
+                                            hex::encode(&hash)
+                                        );
+                                    }
+                                    store_election_height_inc_position(&mut db_tx, h).await?;
+                                }
+                                TypeOneof::Lock(_) => {
+                                    state.locked = true;
+                                    query("UPDATE v_state SET locked = 1 WHERE id = 0")
+                                        .execute(&mut *db_tx)
+                                        .await?;
+                                }
+                                TypeOneof::AddValidator(add_validator) => {
+                                    let Validator { pub_key, power } = add_validator;
+                                    let pub_key = PublicKey {
+                                        sum: Some(Sum::Ed25519(pub_key)),
+                                    };
+                                    let v = ValidatorUpdate {
+                                        pub_key: Some(pub_key),
+                                        power: power as i64,
+                                    };
+                                    validator_updates.push(v);
+                                }
                             }
-                            TypeOneof::AddValidator(add_validator) => {
-                                let Validator { pub_key, power } = add_validator;
-                                let pub_key = PublicKey {
-                                    sum: Some(Sum::Ed25519(pub_key)),
-                                };
-                                let v = ValidatorUpdate {
-                                    pub_key: Some(pub_key),
-                                    power: power as i64,
-                                };
-                                validator_updates.push(v);
+                            Ok::<_, anyhow::Error>(())
+                        };
+                        let result = match finalize.await {
+                            Ok(_) => ExecTxResult::default(),
+                            Err(error) => {
+                                tracing::info!("Finalization error: {}", error);
+                                ExecTxResult {
+                                    code: 1,
+                                    data: tx_copy,
+                                    log: error.to_string(),
+                                    info: "Error in finalization".to_string(),
+                                    ..ExecTxResult::default()
+                                }
                             }
-                        }
-                        Ok::<_, anyhow::Error>(())
-                    };
-                    let result = match finalize.await {
-                        Ok(_) => ExecTxResult::default(),
-                        Err(error) => {
-                            tracing::info!("Finalization error: {}", error);
-                            ExecTxResult {
-                                code: 1,
-                                data: tx_copy,
-                                log: error.to_string(),
-                                info: "Error in finalization".to_string(),
-                                ..ExecTxResult::default()
-                            }
-                        }
-                    };
-                    tx_results.push(result);
-                }
-                let apphash = hasher.finalize().as_bytes().to_vec();
-                store_apphash(&mut db_tx, height as u32, &apphash)
+                        };
+                        tx_results.push(result);
+                    }
+                    hasher.finalize().as_bytes().to_vec()
+                };
+                let height = height as u32;
+                store_apphash(&mut db_tx, height, &new_apphash)
                     .await
                     .unwrap();
-                store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes()).await?;
+                store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
 
                 state.clear_check_witnesses();
                 state.db_tx = Some(db_tx);
-                Ok::<_, ZCVError>((apphash, tx_results, validator_updates))
+                Ok::<_, ZCVError>((new_apphash, tx_results, validator_updates))
             })
             .expect("Fatal Failure in FinalizeBlock");
 
@@ -526,7 +552,13 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
     Ok(exists)
 }
 
-fn read_roots(nf_root: &[u8], cmx_tree: &[u8]) -> ZCVResult<(MerkleHashOrchard, incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>)> {
+fn read_roots(
+    nf_root: &[u8],
+    cmx_tree: &[u8],
+) -> ZCVResult<(
+    MerkleHashOrchard,
+    incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
+)> {
     let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
     let mut c = Cursor::new(cmx_tree);
     let p = c.read_u64::<LE>().anyhow()?;
@@ -538,7 +570,8 @@ fn read_roots(nf_root: &[u8], cmx_tree: &[u8]) -> ZCVResult<(MerkleHashOrchard, 
         let mut l = [0u8; 32];
         c.read_exact(&mut l)?;
         Ok(MerkleHashOrchard::from_bytes(&l).unwrap())
-    }).anyhow()?;
+    })
+    .anyhow()?;
     let cmx_tree = Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
     Ok((nf_root, cmx_tree))
 }
@@ -692,7 +725,11 @@ pub async fn run_cometbft_app(
 ) -> ZCVResult<()> {
     let (pool, lwd_url, skip_validation) = {
         let c = context.lock().await;
-        (c.context.pool.clone(), c.context.lwd_url.clone(), c.skip_validation)
+        (
+            c.context.pool.clone(),
+            c.context.lwd_url.clone(),
+            c.skip_validation,
+        )
     };
     let app = Server::new(pool, &lwd_url, skip_validation).await?;
     let server = ServerBuilder::new(1_000_000)
