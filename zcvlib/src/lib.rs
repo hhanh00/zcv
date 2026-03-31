@@ -5,6 +5,7 @@ pub mod pod;
 pub mod context;
 pub mod db;
 pub mod lwd;
+pub mod pir;
 pub mod balance;
 pub mod ballot;
 pub mod vote;
