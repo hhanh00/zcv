@@ -30,6 +30,8 @@ pub struct Config {
     pub db_path: Option<String>,
     #[clap(short, long, value_parser)]
     pub lwd_url: Option<String>,
+    #[clap(short, long, value_parser)]
+    pub pir_url: Option<String>,
     #[clap(short, long)]
     pub unsafe_skip_validation: bool,
 }
@@ -48,6 +50,7 @@ pub async fn main() -> Result<()> {
         grpc_port,
         db_path,
         lwd_url,
+        pir_url,
         unsafe_skip_validation,
     } = config;
     let cometrpc_port = cometrpc_port.unwrap_or(26657);
@@ -55,13 +58,20 @@ pub async fn main() -> Result<()> {
     let grpc_port = grpc_port.unwrap_or(9010);
     let db_path = db_path.unwrap_or("vote.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
+    let pir_url = pir_url.unwrap_or("https://eth.taila9c148.ts.net".to_string());
 
     tracing::info!("Computing Proving Key. Please wait...");
     std::sync::LazyLock::force(&VK);
     tracing::info!("Done.");
 
-    let context =
-        BFTContext::new(&db_path, &lwd_url, cometrpc_port, unsafe_skip_validation).await?;
+    let context = BFTContext::new(
+        &db_path,
+        &lwd_url,
+        &pir_url,
+        cometrpc_port,
+        unsafe_skip_validation,
+    )
+    .await?;
     {
         let mut conn = context.connect().await?;
         create_schema(&mut conn).await?;

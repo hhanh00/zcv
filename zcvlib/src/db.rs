@@ -74,7 +74,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         version = 1;
     }
 
-    if version != 1 {
+    if version != 2 {
         drop_schema(&mut *conn).await?;
     }
 
@@ -82,30 +82,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
         version INTEGER,
-        account INTEGER,
-        url TEXT,
-        apphash BLOB,
-        height INTEGER,
-        locked BOOL NOT NULL)",
+        account INTEGER)",
     )
     .execute(&mut *conn)
     .await?;
 
-    let _ = query("ALTER TABLE v_state ADD COLUMN version INTEGER")
-        .execute(&mut *conn)
-        .await;
-
-    let _ = query("ALTER TABLE v_elections ADD COLUMN nf_root BLOB")
-        .execute(&mut *conn)
-        .await;
-
-    let _ = query("ALTER TABLE v_elections ADD COLUMN cmx_tree BLOB")
-        .execute(&mut *conn)
-        .await;
-
     query(
-        "INSERT INTO v_state(id, version, locked)
-    VALUES (0, 1, FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO v_state(id, version)
+    VALUES (0, 2) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
