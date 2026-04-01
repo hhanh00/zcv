@@ -319,7 +319,7 @@ pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()
     let mut db_tx = conn.begin().await?;
     query(
         "UPDATE v_state SET url = NULL,
-    account = NULL, locked = 0 WHERE id = 0",
+    account = NULL WHERE id = 0",
     )
     .execute(&mut *db_tx)
     .await?;
@@ -382,17 +382,17 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
     Ok((domain, address))
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
-    let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
-        .map(|r: SqliteRow| {
-            let height: Option<u32> = r.get(0);
-            let apphash: Option<Vec<u8>> = r.get(1);
-            (height, apphash)
-        })
-        .fetch_one(conn)
-        .await?;
-    Ok((height, apphash))
-}
+// pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
+//     let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
+//         .map(|r: SqliteRow| {
+//             let height: Option<u32> = r.get(0);
+//             let apphash: Option<Vec<u8>> = r.get(1);
+//             (height, apphash)
+//         })
+//         .fetch_one(conn)
+//         .await?;
+//     Ok((height, apphash))
+// }
 
 // pub async fn store_apphash(
 //     conn: &mut SqliteConnection,

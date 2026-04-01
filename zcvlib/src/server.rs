@@ -2,7 +2,7 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, store_ballot,
+        check_cmx_root, store_ballot,
         store_cmx_root, store_election, store_election_height_inc_position, store_roots,
     },
     error::IntoAnyhow,
@@ -80,6 +80,7 @@ pub struct ServerState {
     pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
 
     pub db_tx: Option<Transaction<'static, Sqlite>>,
+    pub apphash: [u8; 32],
 }
 
 impl ServerState {
@@ -101,6 +102,7 @@ impl ServerState {
             nf_root: MerkleHashOrchard::empty_leaf(),
             cmx_tree: Frontier::empty(),
             db_tx: None,
+            apphash: [0u8; 32],
         })
     }
 }
@@ -320,16 +322,15 @@ impl Application for Server {
                 let mut state = self.state.lock().await;
                 let mut validator_updates = vec![];
                 let mut db_tx = state.pool.begin().await?;
-                let (_, apphash) = get_apphash(&mut db_tx).await?;
-                let apphash = apphash.unwrap_or_default();
+                let apphash = &state.apphash;
                 let mut tx_results = vec![];
                 let new_apphash = if txs.is_empty() {
-                    apphash.clone()
+                    *apphash
                 } else {
                     let mut hasher = Params::new()
                         .personal(b"ZCVote___AppHash")
                         .hash_length(32)
-                        .key(&apphash)
+                        .key(apphash.as_slice())
                         .to_state();
                     for (itx, mut tx) in txs.into_iter().enumerate() {
                         let tx_copy = tx.clone();
@@ -448,7 +449,7 @@ impl Application for Server {
                         };
                         tx_results.push(result);
                     }
-                    hasher.finalize().as_bytes().to_vec()
+                    tiu!(hasher.finalize().as_bytes())
                 };
                 let height = height as u32;
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
@@ -462,7 +463,7 @@ impl Application for Server {
         ResponseFinalizeBlock {
             tx_results,
             validator_updates,
-            app_hash: Bytes::from(app_hash),
+            app_hash: Bytes::from(app_hash.to_vec()),
             ..ResponseFinalizeBlock::default()
         }
     }
