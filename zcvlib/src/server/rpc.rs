@@ -11,7 +11,7 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     error::IntoAnyhow,
-    lwd::initial_scan,
+    lwd::fetch_roots,
     pod::ElectionPropsPub,
     server::submit_tx,
     vote_rpc::{
@@ -52,8 +52,7 @@ impl VoteStreamer for ZCVServer {
             let e: ElectionPropsPub = serde_json::from_str(&election.election).unwrap();
             let election = {
                 let c = self.context.lock().await;
-                let mut client = crate::lwd::connect(&c.context.lwd_url).await?;
-                let (nf_root, cmx_tree_state) = initial_scan(&mut client, e.start, e.end).await?;
+                let (nf_root, cmx_tree_state) = fetch_roots(&c.context.lwd_url, &c.context.pir_url, e.end).await?;
                 Election {
                     nf_root,
                     cmx_tree_state,

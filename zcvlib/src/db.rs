@@ -422,18 +422,18 @@ pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>
     Ok(None)
 }
 
-pub async fn store_roots(
-    conn: &mut SqliteConnection,
-    nf_root: &[u8],
-    cmx_tree: &[u8],
-) -> ZCVResult<()> {
-    query("UPDATE v_elections SET nf_root = ?1, cmx_tree = ?2 WHERE id_election = 0")
-        .bind(nf_root)
-        .bind(cmx_tree)
-        .execute(conn)
-        .await?;
-    Ok(())
-}
+// pub async fn store_roots(
+//     conn: &mut SqliteConnection,
+//     nf_root: &[u8],
+//     cmx_tree: &[u8],
+// ) -> ZCVResult<()> {
+//     query("UPDATE v_elections SET nf_root = ?1, cmx_tree = ?2 WHERE id_election = 0")
+//         .bind(nf_root)
+//         .bind(cmx_tree)
+//         .execute(conn)
+//         .await?;
+//     Ok(())
+// }
 
 pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8], height: u32) -> ZCVResult<()> {
     query("INSERT INTO vs_cmxs(cmx, height) VALUES (?1, ?2) ON CONFLICT DO NOTHING")

@@ -1842,7 +1842,7 @@ dependencies = [
 [[package]]
 name = "imt-tree"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir#fcf8db07e7188b68e5100276d0aec089f5a13b9a"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
 dependencies = [
  "anyhow",
  "ff",
@@ -2535,7 +2535,7 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 [[package]]
 name = "pir-client"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir#fcf8db07e7188b68e5100276d0aec089f5a13b9a"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
 dependencies = [
  "anyhow",
  "ff",
@@ -2554,7 +2554,7 @@ dependencies = [
 [[package]]
 name = "pir-types"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir#fcf8db07e7188b68e5100276d0aec089f5a13b9a"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
 dependencies = [
  "anyhow",
  "ff",
@@ -5077,6 +5077,7 @@ dependencies = [
  "halo2_gadgets",
  "halo2_proofs",
  "hex",
+ "incrementalmerkletree",
  "jubjub",
  "orchard",
  "rayon",
