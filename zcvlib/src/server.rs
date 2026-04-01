@@ -109,24 +109,7 @@ impl ServerState {
 
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
-        let rt = Runtime::new().unwrap();
-        let (height, apphash) = rt
-            .block_on(async move {
-                let state = self.state.lock().await;
-                let mut conn = state.pool.acquire().await?;
-                let (height, apphash) = get_apphash(&mut conn).await?;
-                Ok::<_, ZCVError>((height, apphash))
-            })
-            .expect("Could not get app state");
-        let height = height.unwrap_or_default();
-        let apphash = apphash.unwrap_or_default();
-        tracing::info!("Starting @{height} apphash {}", hex::encode(&apphash));
-
-        ResponseInfo {
-            last_block_height: height as i64,
-            last_block_app_hash: Bytes::from(apphash),
-            ..Default::default()
-        }
+        ResponseInfo::default()
     }
 
     // Checks if a tx is structurally correct
