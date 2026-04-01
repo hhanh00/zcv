@@ -74,7 +74,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         version = 1;
     }
 
-    if version != 1 {
+    if version != 2 {
         drop_schema(&mut *conn).await?;
     }
 
@@ -82,30 +82,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
         version INTEGER,
-        account INTEGER,
-        url TEXT,
-        apphash BLOB,
-        height INTEGER,
-        locked BOOL NOT NULL)",
+        account INTEGER)",
     )
     .execute(&mut *conn)
     .await?;
 
-    let _ = query("ALTER TABLE v_state ADD COLUMN version INTEGER")
-        .execute(&mut *conn)
-        .await;
-
-    let _ = query("ALTER TABLE v_elections ADD COLUMN nf_root BLOB")
-        .execute(&mut *conn)
-        .await;
-
-    let _ = query("ALTER TABLE v_elections ADD COLUMN cmx_tree BLOB")
-        .execute(&mut *conn)
-        .await;
-
     query(
-        "INSERT INTO v_state(id, version, locked)
-    VALUES (0, 1, FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO v_state(id, version)
+    VALUES (0, 2) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
@@ -335,7 +319,7 @@ pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()
     let mut db_tx = conn.begin().await?;
     query(
         "UPDATE v_state SET url = NULL,
-    account = NULL, locked = 0 WHERE id = 0",
+    account = NULL WHERE id = 0",
     )
     .execute(&mut *db_tx)
     .await?;
@@ -398,30 +382,30 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
     Ok((domain, address))
 }
 
-pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
-    let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
-        .map(|r: SqliteRow| {
-            let height: Option<u32> = r.get(0);
-            let apphash: Option<Vec<u8>> = r.get(1);
-            (height, apphash)
-        })
-        .fetch_one(conn)
-        .await?;
-    Ok((height, apphash))
-}
+// pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
+//     let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
+//         .map(|r: SqliteRow| {
+//             let height: Option<u32> = r.get(0);
+//             let apphash: Option<Vec<u8>> = r.get(1);
+//             (height, apphash)
+//         })
+//         .fetch_one(conn)
+//         .await?;
+//     Ok((height, apphash))
+// }
 
-pub async fn store_apphash(
-    conn: &mut SqliteConnection,
-    height: u32,
-    apphash: &[u8],
-) -> ZCVResult<()> {
-    query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
-        .bind(height)
-        .bind(apphash)
-        .execute(conn)
-        .await?;
-    Ok(())
-}
+// pub async fn store_apphash(
+//     conn: &mut SqliteConnection,
+//     height: u32,
+//     apphash: &[u8],
+// ) -> ZCVResult<()> {
+//     query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
+//         .bind(height)
+//         .bind(apphash)
+//         .execute(conn)
+//         .await?;
+//     Ok(())
+// }
 
 pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
     let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")

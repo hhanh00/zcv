@@ -2,17 +2,16 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, get_election_opt, get_roots, store_apphash, store_ballot,
+        check_cmx_root, store_ballot,
         store_cmx_root, store_election, store_election_height_inc_position, store_roots,
     },
     error::IntoAnyhow,
-    lwd::initial_scan,
     pod::ElectionPropsPub,
     tiu,
     vote::VK,
     vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use byteorder::{LE, ReadBytesExt};
@@ -23,8 +22,7 @@ use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
 use sqlx::{
-    Acquire, Row, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as,
-    sqlite::SqliteRow,
+    Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query,
 };
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
@@ -56,8 +54,13 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(pool: SqlitePool, lwd_url: &str, skip_validation: bool) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, lwd_url, skip_validation).await?;
+    pub async fn new(
+        pool: SqlitePool,
+        lwd_url: &str,
+        pir_url: &str,
+        skip_validation: bool,
+    ) -> ZCVResult<Self> {
+        let server = ServerState::new(pool, lwd_url, pir_url, skip_validation).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -65,6 +68,8 @@ impl Server {
 }
 
 pub struct ServerState {
+    pub lwd_url: String,
+    pub pir_url: String,
     pub pool: SqlitePool,
     pub locked: bool,
     pub election: Option<ElectionPropsPub>,
@@ -75,98 +80,36 @@ pub struct ServerState {
     pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
 
     pub db_tx: Option<Transaction<'static, Sqlite>>,
+    pub apphash: [u8; 32],
 }
 
 impl ServerState {
-    pub async fn new(pool: SqlitePool, lwd_url: &str, skip_validation: bool) -> ZCVResult<Self> {
-        let mut conn = pool.acquire().await?;
-        let (locked,): (bool,) = query_as("SELECT locked FROM v_state WHERE id = 0")
-            .fetch_one(&mut *conn)
-            .await
-            .context("get locked")?;
-
-        // TODO: Recover state from db
-        // election <- v_elections
-        // domain <- election.domain
-        // nf_root <- need to scan again
-        // cmx_tree <- need to scan again
-        // replay actions in height, ballot, idx order and append cmx
-
-        // save nf_root, cmx_tree in v_elections table
-        // (add column if needed)
-
-        let election = get_election_opt(&mut conn).await?;
-        let (domain, nf_root, cmx_tree) = match election.as_ref() {
-            Some(election) => {
-                let domain = Fp::from_repr(tiu!(election.domain.clone())).unwrap();
-                let (nf_root, cmx_tree) = match get_roots(&mut conn).await? {
-                    Some((nf_root, cmx_tree)) => (nf_root, cmx_tree),
-                    None => {
-                        let mut client = crate::lwd::connect(lwd_url).await?;
-                        let (nf_root, cmx_tree) =
-                            initial_scan(&mut client, election.start, election.end)
-                                .await
-                                .unwrap();
-                        store_roots(&mut conn, &nf_root, &cmx_tree).await.unwrap();
-                        (nf_root, cmx_tree)
-                    }
-                };
-                let (nf_root, mut cmx_tree) = read_roots(&nf_root, &cmx_tree).unwrap();
-                tracing::info!("{:?} {:?}", nf_root, cmx_tree.root());
-
-                let cmxs = query("SELECT cmx FROM v_actions ORDER BY height, ballot, idx")
-                    .map(|r: SqliteRow| r.get::<Vec<u8>, _>(0))
-                    .fetch_all(&mut *conn)
-                    .await?;
-                for cmx in cmxs {
-                    let cmx = Fp::from_repr(tiu!(cmx)).unwrap();
-                    cmx_tree.append(MerkleHashOrchard::from_base(cmx));
-                }
-                tracing::info!("{:?}", cmx_tree.root());
-
-                (domain, nf_root, cmx_tree)
-            }
-            None => (
-                Fp::zero(),
-                MerkleHashOrchard::empty_leaf(),
-                Frontier::empty(),
-            ),
-        };
-
+    pub async fn new(
+        pool: SqlitePool,
+        lwd_url: &str,
+        pir_url: &str,
+        skip_validation: bool,
+    ) -> ZCVResult<Self> {
         Ok(Self {
             pool,
-            locked,
-            election,
-            skip_validation,
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
-            domain,
-            nf_root,
-            cmx_tree,
+            skip_validation,
+            lwd_url: lwd_url.to_string(),
+            pir_url: pir_url.to_string(),
+            locked: false,
+            election: None,
+            domain: Fp::zero(),
+            nf_root: MerkleHashOrchard::empty_leaf(),
+            cmx_tree: Frontier::empty(),
             db_tx: None,
+            apphash: [0u8; 32],
         })
     }
 }
 
 impl Application for Server {
     fn info(&self, _request: RequestInfo) -> ResponseInfo {
-        let rt = Runtime::new().unwrap();
-        let (height, apphash) = rt
-            .block_on(async move {
-                let state = self.state.lock().await;
-                let mut conn = state.pool.acquire().await?;
-                let (height, apphash) = get_apphash(&mut conn).await?;
-                Ok::<_, ZCVError>((height, apphash))
-            })
-            .expect("Could not get app state");
-        let height = height.unwrap_or_default();
-        let apphash = apphash.unwrap_or_default();
-        tracing::info!("Starting @{height} apphash {}", hex::encode(&apphash));
-
-        ResponseInfo {
-            last_block_height: height as i64,
-            last_block_app_hash: Bytes::from(apphash),
-            ..Default::default()
-        }
+        ResponseInfo::default()
     }
 
     // Checks if a tx is structurally correct
@@ -379,16 +322,15 @@ impl Application for Server {
                 let mut state = self.state.lock().await;
                 let mut validator_updates = vec![];
                 let mut db_tx = state.pool.begin().await?;
-                let (_, apphash) = get_apphash(&mut db_tx).await?;
-                let apphash = apphash.unwrap_or_default();
+                let apphash = &state.apphash;
                 let mut tx_results = vec![];
                 let new_apphash = if txs.is_empty() {
-                    apphash.clone()
+                    *apphash
                 } else {
                     let mut hasher = Params::new()
                         .personal(b"ZCVote___AppHash")
                         .hash_length(32)
-                        .key(&apphash)
+                        .key(apphash.as_slice())
                         .to_state();
                     for (itx, mut tx) in txs.into_iter().enumerate() {
                         let tx_copy = tx.clone();
@@ -507,12 +449,9 @@ impl Application for Server {
                         };
                         tx_results.push(result);
                     }
-                    hasher.finalize().as_bytes().to_vec()
+                    tiu!(hasher.finalize().as_bytes())
                 };
                 let height = height as u32;
-                store_apphash(&mut db_tx, height, &new_apphash)
-                    .await
-                    .unwrap();
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
 
                 state.clear_check_witnesses();
@@ -524,7 +463,7 @@ impl Application for Server {
         ResponseFinalizeBlock {
             tx_results,
             validator_updates,
-            app_hash: Bytes::from(app_hash),
+            app_hash: Bytes::from(app_hash.to_vec()),
             ..ResponseFinalizeBlock::default()
         }
     }
@@ -723,15 +662,16 @@ pub async fn run_cometbft_app(
     context: Arc<tokio::sync::Mutex<BFTContext>>,
     port: u16,
 ) -> ZCVResult<()> {
-    let (pool, lwd_url, skip_validation) = {
+    let (pool, lwd_url, pir_url, skip_validation) = {
         let c = context.lock().await;
         (
             c.context.pool.clone(),
             c.context.lwd_url.clone(),
+            c.context.pir_url.clone(),
             c.skip_validation,
         )
     };
-    let app = Server::new(pool, &lwd_url, skip_validation).await?;
+    let app = Server::new(pool, &lwd_url, &pir_url, skip_validation).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;
