@@ -50,6 +50,7 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
+// @deprecated
 pub async fn initial_scan(
     client: &mut Client,
     start: u32,
@@ -87,7 +88,8 @@ pub async fn initial_scan(
     }
     nfs.sort();
     let nfs = expand_into_ranges(nfs);
-    let (root, _) = calculate_merkle_paths(0, &[], &nfs);
+    let hasher = orchard::vote::SinsemillaHasher::default();
+    let (root, _) = calculate_merkle_paths::<_, 32>(0, &[], &nfs, &hasher);
     let nf_root = root.to_repr().to_vec();
     let (p, l, o) = cmx_tree.take().unwrap().into_parts();
     let mut cmx_tree_state = vec![];

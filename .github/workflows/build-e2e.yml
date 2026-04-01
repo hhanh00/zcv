@@ -3,9 +3,11 @@ permissions:
   contents: read
 
 on:
-  pull_request:
-    branches:
-    - main
+  # disabled until the nf exclusion tree
+  # is fully integrated
+  # pull_request:
+  #   branches:
+  #   - main
   workflow_dispatch:
   workflow_call:
 

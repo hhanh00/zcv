@@ -178,6 +178,11 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+    let _ = query(
+        "ALTER TABLE vs_cmxs ADD COLUMN height INTEGER",
+    )
+    .execute(&mut *conn)
+    .await;
     query(
         "CREATE TABLE IF NOT EXISTS v_actions(
         id_action INTEGER PRIMARY KEY,
@@ -446,9 +451,10 @@ pub async fn store_roots(
     Ok(())
 }
 
-pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8]) -> ZCVResult<()> {
-    query("INSERT INTO vs_cmxs(cmx) VALUES (?1) ON CONFLICT DO NOTHING")
+pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8], height: u32) -> ZCVResult<()> {
+    query("INSERT INTO vs_cmxs(cmx, height) VALUES (?1, ?2) ON CONFLICT DO NOTHING")
         .bind(cmx)
+        .bind(height)
         .execute(conn)
         .await?;
     Ok(())

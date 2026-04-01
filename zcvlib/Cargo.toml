@@ -72,6 +72,8 @@ bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 
+zcash-trees = { workspace = true }
+pir-client = { workspace = true }
 csv = "1.4"
 
 [build-dependencies]
