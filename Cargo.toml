@@ -59,9 +59,11 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 [workspace.dependencies.zcash-trees]
 git = "https://github.com/hhanh00/zkool2.git"
 rev = "1ce058dafbf4fb5059c7bc735aba555785e1d603"
+features = ["imt"]
 
 [workspace.dependencies.pir-client]
 git = "https://github.com/hhanh00/vote-nullifier-pir"
+rev = "016392d09e84d1de43ed04d138b0692c595bb4af"
 
 [workspace.dependencies.hex]
 features = ["serde"]
