@@ -50,54 +50,21 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
-// @deprecated
-pub async fn initial_scan(
-    client: &mut Client,
-    start: u32,
-    end: u32,
-) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
-    let mut blocks = client
-        .get_block_range(Request::new(BlockRange {
-            start: Some(BlockId {
-                height: start as u64,
-                hash: vec![],
-            }),
-            end: Some(BlockId {
-                height: end as u64,
-                hash: vec![],
-            }),
-            pool_types: vec![PoolType::Orchard.into()],
+pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+    let mut lwd_client = connect(lwd_url).await?;
+    let tree_state = lwd_client
+        .get_tree_state(Request::new(BlockId {
+            height: end as u64,
+            hash: vec![],
         }))
         .await?
         .into_inner();
+    let orchard_tree_state = hex::decode(tree_state.orchard_tree)
+    .anyhow()?;
+    let client = pir_client::PirClient::connect(pir_url).await?;
+    let nf_root = client.root29().to_repr().to_vec();
 
-    let mut nfs = vec![];
-    let mut cmx_tree = Frontier::<MerkleHashOrchard, 32>::empty();
-    while let Some(block) = blocks.message().await? {
-        if block.height % 10_000 == 0 {
-            tracing::info!("initial_scan: @{}", block.height);
-        }
-        for tx in block.vtx {
-            for a in tx.actions {
-                let CompactOrchardAction { nullifier, cmx, .. } = a;
-                let nf = Fp::from_repr(tiu!(nullifier)).unwrap();
-                nfs.push(nf);
-                cmx_tree.append(MerkleHashOrchard::from_bytes(&tiu!(cmx)).unwrap());
-            }
-        }
-    }
-    nfs.sort();
-    let nfs = expand_into_ranges(nfs);
-    let hasher = orchard::vote::SinsemillaHasher::default();
-    let (root, _) = calculate_merkle_paths::<_, 32>(0, &[], &nfs, &hasher);
-    let nf_root = root.to_repr().to_vec();
-    let (p, l, o) = cmx_tree.take().unwrap().into_parts();
-    let mut cmx_tree_state = vec![];
-    cmx_tree_state.write_u64::<LE>(u64::from(p)).anyhow()?;
-    cmx_tree_state.write_all(&l.to_bytes()).anyhow()?;
-    Vector::write(&mut cmx_tree_state, &o, |w, h| w.write_all(&h.to_bytes())).anyhow()?;
-
-    Ok((nf_root, cmx_tree_state))
+    Ok((nf_root, orchard_tree_state))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -340,9 +307,7 @@ pub async fn decode_ballots(
     let ivk = fvk.to_ivk(Scope::External);
     let pivk = PreparedIncomingViewingKey::new(&ivk);
 
-    query("DELETE FROM v_results")
-    .execute(&mut *db_tx)
-    .await?;
+    query("DELETE FROM v_results").execute(&mut *db_tx).await?;
 
     let mut ballots = client
         .get_vote_range(Request::new(VoteRange {

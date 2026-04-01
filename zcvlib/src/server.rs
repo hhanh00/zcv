@@ -3,7 +3,7 @@ use crate::{
     context::BFTContext,
     db::{
         check_cmx_root, store_ballot,
-        store_cmx_root, store_election, store_election_height_inc_position, store_roots,
+        store_cmx_root, store_election, store_election_height_inc_position,
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 use sqlx::{
     Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query,
 };
+use zcash_trees::warp::legacy::CommitmentTreeFrontier;
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     io::{Cursor, Read},
@@ -351,7 +352,7 @@ impl Application for Server {
                                     store_election(&mut db_tx, &election).await?;
 
                                     tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
-                                    store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
+                                    // store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
 
                                     let (nf_root, cmx_tree) =
                                         read_roots(&nf_root, &cmx_tree_state)?;
@@ -499,19 +500,8 @@ fn read_roots(
     incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
 )> {
     let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
-    let mut c = Cursor::new(cmx_tree);
-    let p = c.read_u64::<LE>().anyhow()?;
-    let p: Position = p.into();
-    let mut l = [0u8; 32];
-    c.read_exact(&mut l).anyhow()?;
-    let l = MerkleHashOrchard::from_bytes(&l).unwrap();
-    let o = Vector::read(c, |c| {
-        let mut l = [0u8; 32];
-        c.read_exact(&mut l)?;
-        Ok(MerkleHashOrchard::from_bytes(&l).unwrap())
-    })
-    .anyhow()?;
-    let cmx_tree = Frontier::<MerkleHashOrchard, 32>::from_parts(p, l, o).unwrap();
+    let cmx_tree = CommitmentTreeFrontier::read(&*cmx_tree).anyhow()?;
+    let cmx_tree = cmx_tree.to_orchard_frontier();
     Ok((nf_root, cmx_tree))
 }
 
