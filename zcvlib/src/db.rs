@@ -394,18 +394,18 @@ pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>,
     Ok((height, apphash))
 }
 
-pub async fn store_apphash(
-    conn: &mut SqliteConnection,
-    height: u32,
-    apphash: &[u8],
-) -> ZCVResult<()> {
-    query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
-        .bind(height)
-        .bind(apphash)
-        .execute(conn)
-        .await?;
-    Ok(())
-}
+// pub async fn store_apphash(
+//     conn: &mut SqliteConnection,
+//     height: u32,
+//     apphash: &[u8],
+// ) -> ZCVResult<()> {
+//     query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
+//         .bind(height)
+//         .bind(apphash)
+//         .execute(conn)
+//         .await?;
+//     Ok(())
+// }
 
 pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
     let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")

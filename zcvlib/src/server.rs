@@ -2,17 +2,16 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, get_apphash, get_election_opt, get_roots, store_apphash, store_ballot,
+        check_cmx_root, get_apphash, store_ballot,
         store_cmx_root, store_election, store_election_height_inc_position, store_roots,
     },
     error::IntoAnyhow,
-    lwd::initial_scan,
     pod::ElectionPropsPub,
     tiu,
     vote::VK,
     vote_rpc::{Ballot, Validator, VoteMessage, vote_message::TypeOneof},
 };
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use byteorder::{LE, ReadBytesExt};
@@ -23,8 +22,7 @@ use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
 use serde_json::{Value, json};
 use sqlx::{
-    Acquire, Row, Sqlite, SqliteConnection, SqlitePool, Transaction, query, query_as,
-    sqlite::SqliteRow,
+    Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query,
 };
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
@@ -453,9 +451,6 @@ impl Application for Server {
                     hasher.finalize().as_bytes().to_vec()
                 };
                 let height = height as u32;
-                store_apphash(&mut db_tx, height, &new_apphash)
-                    .await
-                    .unwrap();
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
 
                 state.clear_check_witnesses();
