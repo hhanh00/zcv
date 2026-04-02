@@ -102,14 +102,14 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
-            let (height, hash): (u32, Vec<u8>) = query_as(
-                "SELECT e.height, s.apphash FROM v_elections e, v_state s
+            let (height, ): (u32, ) = query_as(
+                "SELECT e.height FROM v_elections e, v_state s
                 WHERE e.id_election = 0",
             )
             .fetch_one(&mut *conn)
             .await
             .context("get latest vote height")?;
-            Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash }))
+            Ok::<_, anyhow::Error>(Response::new(VoteHeight { height, hash: vec![] }))
         };
         res.await.map_err(to_tonic)
     }

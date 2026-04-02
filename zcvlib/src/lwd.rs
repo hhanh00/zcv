@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::Write,
 };
 
 use crate::{
@@ -17,18 +16,14 @@ use crate::{
         compact_tx_streamer_client::CompactTxStreamerClient,
     },
     tiu,
-    vote::expand_into_ranges,
     vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
-use byteorder::{LE, WriteBytesExt};
 use ff::PrimeField;
-use incrementalmerkletree::frontier::Frontier;
 use orchard::{
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
     note::{ExtractedNoteCommitment, Nullifier},
     note_encryption::{CompactAction, OrchardDomain},
-    tree::MerkleHashOrchard,
-    vote::{calculate_merkle_paths, try_decrypt_ballot},
+    vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
 use sqlx::{Acquire, SqliteConnection, query, query_as};
@@ -37,7 +32,6 @@ use tonic::{
     transport::{Channel, Endpoint},
 };
 use tracing::info;
-use zcash_encoding::Vector;
 use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
 use zcash_protocol::consensus::Network;
 

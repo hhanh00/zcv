@@ -82,7 +82,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS v_state(
         id INTEGER PRIMARY KEY,
         version INTEGER,
-        account INTEGER)",
+        account INTEGER,
+        height INTEGER NOT NULL DEFAULT 0)",
     )
     .execute(&mut *conn)
     .await?;
@@ -140,6 +141,14 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         id_note INTEGER PRIMARY KEY,
         height INTEGER NOT NULL,
         value INTEGER NOT NULL)",
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS v_witnesses(
+        id_note INTEGER PRIMARY KEY,
+        nf BLOB NOT NULL,
+        cmx BLOB NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
@@ -291,6 +300,14 @@ pub async fn store_election(
     .execute(&mut *conn)
     .await
     .context("store_election")?;
+    Ok(())
+}
+
+pub async fn store_height(conn: &mut SqliteConnection, height: u32) -> ZCVResult<()> {
+    query("UPDATE v_state SET height = ?1 WHERE id = 0")
+    .bind(height)
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
