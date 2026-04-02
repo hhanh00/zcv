@@ -3,7 +3,7 @@ use crate::{
     context::BFTContext,
     db::{
         check_cmx_root, store_ballot,
-        store_cmx_root, store_election, store_election_height_inc_position,
+        store_cmx_root, store_election, store_election_height_inc_position, store_height,
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -14,9 +14,8 @@ use crate::{
 use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
-use byteorder::{LE, ReadBytesExt};
 use ff::PrimeField;
-use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
+use incrementalmerkletree::{Hashable, frontier::Frontier};
 use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
@@ -27,7 +26,6 @@ use sqlx::{
 use zcash_trees::warp::legacy::CommitmentTreeFrontier;
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
-    io::{Cursor, Read},
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
     time::Duration,
@@ -43,7 +41,6 @@ use tendermint_proto::{
     crypto::{PublicKey, public_key::Sum},
 };
 use tokio::{runtime::Runtime, sync::Mutex};
-use zcash_encoding::Vector;
 
 pub mod rpc;
 
@@ -453,6 +450,7 @@ impl Application for Server {
                     tiu!(hasher.finalize().as_bytes())
                 };
                 let height = height as u32;
+                store_height(&mut db_tx, height).await?;
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
 
                 state.clear_check_witnesses();
@@ -500,7 +498,7 @@ fn read_roots(
     incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
 )> {
     let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
-    let cmx_tree = CommitmentTreeFrontier::read(&*cmx_tree).anyhow()?;
+    let cmx_tree = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
     let cmx_tree = cmx_tree.to_orchard_frontier();
     Ok((nf_root, cmx_tree))
 }

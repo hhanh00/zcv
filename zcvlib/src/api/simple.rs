@@ -1,14 +1,18 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
+use ff::PrimeField;
 use orchard::vote::Ballot;
+use pasta_curves::Fp;
+use pir_client::PirClient;
 use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
 
 use crate::api::ProgressReporter;
 use crate::context::Context;
-use crate::db::get_election_height;
+use crate::db::{get_election_height, get_election_opt};
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
+use crate::tiu;
 use crate::vote::VoteResultItem;
 use crate::vote_rpc::Empty;
 use crate::vote_rpc::vote_streamer_client::VoteStreamerClient;
@@ -189,10 +193,35 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
     Ok(address)
 }
 
+pub async fn import_election(context: &Context) -> Result<()>
+{
+    let mut client = connect_to_vote_server(context).await?;
+    let election_json = client
+        .get_election(Request::new(Empty {}))
+        .await?
+        .into_inner()
+        .election;
+    store_election(election_json, context).await?;
+    Ok(())
+}
+
+pub async fn import_account(id_account: u32, context: &Context) -> Result<()> {
+    let mut conn = context.connect().await?;
+    let mut client = connect(&context.lwd_url).await?;
+    let pir_client = PirClient::connect(&context.pir_url).await?;
+    let election = get_election_opt(&mut conn).await?
+        .context("No Election set")?;
+    let domain = Fp::from_repr(tiu!(election.domain)).unwrap();
+    let height = election.end;
+    crate::balance::import_account(&Network::MainNetwork,
+        &mut conn,
+        &mut client, &pir_client,
+        id_account, domain, height).await?;
+    Ok(())
+}
+
 async fn connect_to_vote_server(context: &Context) -> Result<VoteClient> {
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let client = VoteStreamerClient::connect(ep).await?;
     Ok(client)
 }
-
-

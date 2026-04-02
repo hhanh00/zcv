@@ -1,5 +1,5 @@
 use bech32::{Bech32m, Hrp};
-use bincode::Encode;
+use bincode::{Decode, Encode};
 use ff::PrimeField;
 use orchard::{
     Note,
@@ -9,6 +9,7 @@ use orchard::{
     vote::calculate_domain,
 };
 use pasta_curves::Fp;
+use pir_client::ImtProofData;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -174,5 +175,54 @@ mod tests {
         let domain = &epub.domain;
         println!("{}", hex::encode(domain));
         assert_eq!(domain, TEST_ELECTION_HASH);
+    }
+}
+
+// Mirror type for Fp — adapt based on Fp's actual repr
+#[derive(Encode, Decode)]
+pub struct FpRepr([u8; 32]);
+
+impl From<Fp> for FpRepr {
+    fn from(fp: Fp) -> Self {
+        FpRepr(fp.to_repr()) // adapt to actual API
+    }
+}
+
+impl From<FpRepr> for Fp {
+    fn from(r: FpRepr) -> Self {
+        Fp::from_repr(r.0).unwrap()
+    }
+}
+
+#[derive(Encode, Decode)]
+pub struct ImtProofDataBin {
+    pub root: FpRepr,
+    pub low: FpRepr,
+    pub width: FpRepr,
+    pub leaf_pos: u32,
+    pub path: [FpRepr; 29],
+}
+
+impl From<ImtProofData> for ImtProofDataBin {
+    fn from(d: ImtProofData) -> Self {
+        ImtProofDataBin {
+            root: d.root.into(),
+            low: d.low.into(),
+            width: d.width.into(),
+            leaf_pos: d.leaf_pos,
+            path: d.path.map(Into::into),
+        }
+    }
+}
+
+impl From<ImtProofDataBin> for ImtProofData {
+    fn from(d: ImtProofDataBin) -> Self {
+        ImtProofData {
+            root: d.root.into(),
+            low: d.low.into(),
+            width: d.width.into(),
+            leaf_pos: d.leaf_pos,
+            path: d.path.map(Into::into),
+        }
     }
 }
