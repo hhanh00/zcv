@@ -37,10 +37,7 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn scan_ballots(
-        id_accounts: Vec<i32>,
-        context: &GQLContext,
-    ) -> FieldResult<bool> {
+    async fn scan_ballots(id_accounts: Vec<i32>, context: &GQLContext) -> FieldResult<bool> {
         zcvlib::api::simple::scan_ballots(
             id_accounts.into_iter().map(|a| a as u32).collect(),
             &context.0,
@@ -49,10 +46,7 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn decode_ballots(
-        election_seed: String,
-        context: &GQLContext,
-    ) -> FieldResult<bool> {
+    async fn decode_ballots(election_seed: String, context: &GQLContext) -> FieldResult<bool> {
         zcvlib::api::simple::decode_ballots(election_seed, &context.0).await?;
         Ok(true)
     }
@@ -77,24 +71,13 @@ impl Mutation {
         ctx: &GQLContext,
     ) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
-        zcvlib::api::simple::vote(
-            id_account as u32,
-            vote_content,
-            amount,
-            &ctx.0,
-        )
-        .await?;
+        zcvlib::api::simple::vote(id_account as u32, vote_content, amount, &ctx.0).await?;
         Ok(true)
     }
 
-    async fn mint(
-        id_account: i32,
-        amount: BigDecimal,
-        ctx: &GQLContext,
-    ) -> FieldResult<bool> {
+    async fn mint(id_account: i32, amount: BigDecimal, ctx: &GQLContext) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
-        zcvlib::api::simple::mint(id_account as u32, amount, &ctx.0)
-            .await?;
+        zcvlib::api::simple::mint(id_account as u32, amount, &ctx.0).await?;
         Ok(true)
     }
 
@@ -106,13 +89,17 @@ impl Mutation {
     ) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
         tracing::info!("delegate {amount}");
-        zcvlib::api::simple::delegate(
-            id_account as u32,
-            &address,
-            amount,
-            &ctx.0,
-        )
-        .await?;
+        zcvlib::api::simple::delegate(id_account as u32, &address, amount, &ctx.0).await?;
+        Ok(true)
+    }
+
+    async fn import_election(ctx: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::import_election(&ctx.0).await?;
+        Ok(true)
+    }
+
+    async fn import_account(account: i32, ctx: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::import_account(account as u32, &ctx.0).await?;
         Ok(true)
     }
 }

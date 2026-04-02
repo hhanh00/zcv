@@ -1,7 +1,162 @@
 use anyhow::Context;
-use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
+use bincode::config::legacy;
+use ff::PrimeField;
+use orchard::{
+    Note,
+    keys::{Diversifier, Scope},
+    note::{RandomSeed, Rho},
+    value::NoteValue,
+};
+use pasta_curves::Fp;
+use pir_client::PirClient;
+use sqlx::{Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
+use tonic::Request;
+use zcash_protocol::consensus::Network;
+use zcash_trees::warp::{Witness, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 
-use crate::{ZCVResult, pod::UTXO};
+use crate::{
+    ZCVResult,
+    db::{get_ivks, store_received_note},
+    error::IntoAnyhow,
+    lwd::Client,
+    pod::{ImtProofDataBin, UTXO},
+    rpc::BlockId,
+    tiu,
+};
+
+pub async fn import_account(
+    network: &Network,
+    conn: &mut SqliteConnection,
+    client: &mut Client,
+    pir_client: &PirClient,
+    account: u32,
+    domain: Fp,
+    height: u32,
+) -> ZCVResult<()> {
+    query("DELETE FROM v_notes").execute(&mut *conn).await?;
+
+    let (fvk, _, _) = get_ivks(network, conn, account).await?;
+    let notes = query(
+        "SELECT
+        a.id_note,
+        a.diversifier,
+        a.value,
+        a.rcm,
+        a.rho,
+        a.scope,
+        a.position,
+        a.height
+        FROM notes a
+        LEFT JOIN spends b ON a.id_note = b.id_note
+        WHERE b.id_note IS NULL
+        AND a.height < ?1
+        AND a.account = ?2",
+    )
+    .bind(height)
+    .bind(account)
+    .map(|r: SqliteRow| {
+        let id: u32 = r.get(0);
+        let diversifier: Vec<u8> = r.get(1);
+        let value: u64 = r.get(2);
+        let rcm: Vec<u8> = r.get(3);
+        let rho: Vec<u8> = r.get(4);
+        let scope: u32 = r.get(5);
+        let position: u32 = r.get(6);
+        let height: u32 = r.get(7);
+        let oscope = if scope == 0 {
+            Scope::External
+        } else {
+            Scope::Internal
+        };
+        let diversifier = Diversifier::from_bytes(tiu!(diversifier));
+        let recipient = fvk.address(diversifier, oscope);
+        let value = NoteValue::from_raw(value);
+        let rho = Rho::from_bytes(&tiu!(rho)).unwrap();
+        let rseed = RandomSeed::from_bytes(tiu!(rcm), &rho).unwrap();
+        let note = Note::from_parts(recipient, value, rho, rseed).unwrap();
+        (id, note, position, scope, height)
+    })
+    .fetch_all(&mut *conn)
+    .await?;
+
+    for (_id, note, position, scope, height) in notes.iter() {
+        store_received_note(
+            conn,
+            domain,
+            account,
+            &fvk,
+            note,
+            &[],
+            *height,
+            *position,
+            *scope,
+        )
+        .await?;
+    }
+
+    // Find first witness height after the snapshot
+    let (witness_height,): (u32,) = query_as(
+        "SELECT DISTINCT height FROM witnesses
+        WHERE height >= ?1 ORDER BY height LIMIT 1",
+    )
+    .bind(height)
+    .fetch_one(&mut *conn)
+    .await
+    .context("No witness data after snapshot height")?;
+
+    let tree_state = client
+        .get_tree_state(Request::new(BlockId {
+            height: height as u64,
+            hash: vec![],
+        }))
+        .await?
+        .into_inner();
+    let orchard_tree = hex::decode(&tree_state.orchard_tree).anyhow()?;
+    let orchard_tree = CommitmentTreeFrontier::read(&*orchard_tree).anyhow()?;
+    let hasher = OrchardHasher::default();
+    let edge_position = orchard_tree.to_edge(&hasher).to_auth_path(&hasher).1;
+
+    for (id, note, _, _, _) in notes.iter() {
+        let witness = query(
+            "SELECT witness FROM witnesses
+            WHERE account = ?1 AND note = ?2 AND height = ?3",
+        )
+        .bind(account)
+        .bind(*id)
+        .bind(witness_height)
+        .map(|r: SqliteRow| {
+            let witness: Vec<u8> = r.get(0);
+            let (witness, _) =
+                bincode::decode_from_slice::<Witness, _>(&witness, legacy()).unwrap();
+            witness
+        })
+        .fetch_one(&mut *conn)
+        .await
+        .context("Cannot find witness")?;
+        let cmx_proof = witness.rewind(edge_position);
+
+        let nf = note.nullifier(&fvk);
+        let nf = Fp::from_repr(nf.to_bytes()).unwrap();
+        let nf_proof = pir_client.fetch_proof(nf).await?;
+
+        let nf_proof: ImtProofDataBin = nf_proof.into();
+        let nf_bytes = bincode::encode_to_vec(&nf_proof, legacy()).anyhow()?;
+
+        let cmx_bytes = bincode::encode_to_vec(&cmx_proof, legacy()).anyhow()?;
+
+        query(
+            "INSERT INTO v_witnesses(id_note, nf, cmx)
+            VALUES (?1, ?2, ?3)",
+        )
+        .bind(*id)
+        .bind(&nf_bytes)
+        .bind(&cmx_bytes)
+        .execute(&mut *conn)
+        .await?;
+    }
+
+    Ok(())
+}
 
 pub async fn list_unspent_notes(
     conn: &mut SqliteConnection,
@@ -53,7 +208,8 @@ mod tests {
     use anyhow::Result;
 
     use crate::{
-        balance::get_balance, tests::{get_connection, run_scan, test_setup}
+        balance::get_balance,
+        tests::{get_connection, run_scan, test_setup},
     };
 
     #[tokio::test]
