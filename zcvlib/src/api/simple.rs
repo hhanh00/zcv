@@ -141,6 +141,8 @@ pub async fn vote(
     let ballot = crate::vote::vote(
         &Network::MainNetwork,
         &mut conn,
+        &context.lwd_url,
+        &context.pir_url,
         id_account,
         &memo,
         amount,
@@ -177,6 +179,8 @@ pub async fn delegate(
     let ballot = crate::vote::delegate(
         &Network::MainNetwork,
         &mut conn,
+        &context.lwd_url,
+        &context.pir_url,
         id_account,
         address,
         amount,

@@ -79,12 +79,13 @@ pub async fn import_account(
     .fetch_all(&mut *conn)
     .await?;
 
-    for (_id, note, position, scope, height) in notes.iter() {
+    for (id, note, position, scope, height) in notes.iter() {
         store_received_note(
             conn,
             domain,
             account,
             &fvk,
+            Some(*id),
             note,
             &[],
             *height,

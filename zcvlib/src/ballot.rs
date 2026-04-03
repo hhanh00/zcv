@@ -160,6 +160,7 @@ pub async fn decrypt_ballot_data(
                 domain,
                 id_account,
                 &fvk,
+                None,
                 &note,
                 &memo,
                 height,
