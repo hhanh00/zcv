@@ -163,6 +163,7 @@ pub async fn scan_blocks<PR: ProgressReporter>(
                             domain,
                             *id_account,
                             fvk,
+                            None,
                             &note,
                             &[], // memos are not used prior to voting
                             height,
@@ -264,6 +265,7 @@ pub async fn scan_ballots(
                         domain,
                         *id_account,
                         fvk,
+                        None,
                         &note,
                         &memo, // memos are not used prior to voting
                         height,

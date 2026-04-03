@@ -424,20 +424,20 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
 //     Ok(())
 // }
 
-pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
-    let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")
-        .map(|r: SqliteRow| {
-            let nf_root: Option<Vec<u8>> = r.get(0);
-            let cmx_tree: Option<Vec<u8>> = r.get(1);
-            (nf_root, cmx_tree)
-        })
-        .fetch_one(&mut *conn)
-        .await?;
-    if let Some(nf_root) = nf_root {
-        return Ok(Some((nf_root, cmx_tree.unwrap())));
-    }
-    Ok(None)
-}
+// pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
+//     let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")
+//         .map(|r: SqliteRow| {
+//             let nf_root: Option<Vec<u8>> = r.get(0);
+//             let cmx_tree: Option<Vec<u8>> = r.get(1);
+//             (nf_root, cmx_tree)
+//         })
+//         .fetch_one(&mut *conn)
+//         .await?;
+//     if let Some(nf_root) = nf_root {
+//         return Ok(Some((nf_root, cmx_tree.unwrap())));
+//     }
+//     Ok(None)
+// }
 
 // pub async fn store_roots(
 //     conn: &mut SqliteConnection,
@@ -592,6 +592,7 @@ pub async fn store_received_note(
     election_domain: Fp,
     id_account: u32,
     fvk: &FullViewingKey,
+    id_note: Option<u32>,
     note: &Note,
     memo: &[u8],
     height: u32,
@@ -603,9 +604,10 @@ pub async fn store_received_note(
 
     query(
         "INSERT INTO v_notes
-    (account, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    (id_note, account, height, scope, position, nf, dnf, rho, diversifier, rseed, value, memo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
+    .bind(id_note)
     .bind(id_account)
     .bind(height)
     .bind(scope)
