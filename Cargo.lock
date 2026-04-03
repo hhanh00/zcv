@@ -5068,7 +5068,6 @@ dependencies = [
 [[package]]
 name = "zcash-trees"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/zkool2.git?rev=67f580f79484c511bf967d4f4eea7076d733ece3#67f580f79484c511bf967d4f4eea7076d733ece3"
 dependencies = [
  "anyhow",
  "bincode",

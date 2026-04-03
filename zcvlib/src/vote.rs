@@ -61,7 +61,7 @@ pub async fn send_vote(
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
 
     tracing::info!("get_election");
-    let e = get_election(conn).await?;
+    let (e, ..) = get_election(conn).await?;
     let sk = if e.need_sig {
         Some(get_account_sk(network, conn, id_account).await?)
     } else {
@@ -330,7 +330,7 @@ pub static VK: LazyLock<VerifyingKey<Circuit>> = LazyLock::new(VerifyingKey::bui
 mod tests {
     use crate::{
         db::get_domain,
-        tests::{get_connection, run_scan, test_setup},
+        tests::{get_connection, test_setup},
     };
     use anyhow::Result;
 
@@ -339,7 +339,6 @@ mod tests {
     async fn test_vote() -> Result<()> {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
-        run_scan(&mut conn).await?;
         let (_domain, _address) = get_domain(&mut conn).await?;
 
         // TODO

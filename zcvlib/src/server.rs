@@ -2,8 +2,8 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, store_ballot,
-        store_cmx_root, store_election, store_election_height_inc_position, store_height,
+        check_cmx_root, frontier_to_bytes, store_ballot,
+        store_cmx_root, store_election, store_election_frontier, store_election_height,
     },
     error::IntoAnyhow,
     pod::ElectionPropsPub,
@@ -346,13 +346,10 @@ impl Application for Server {
                                     } = election;
                                     let election: ElectionPropsPub =
                                         serde_json::from_str(&election)?;
-                                    store_election(&mut db_tx, &election).await?;
-
                                     tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
-                                    // store_roots(&mut db_tx, &nf_root, &cmx_tree_state).await?;
-
                                     let (nf_root, cmx_tree) =
                                         read_roots(&nf_root, &cmx_tree_state)?;
+                                    store_election(&mut db_tx, &election, &nf_root.to_bytes(), &cmx_tree_state).await?;
 
                                     let cmx_root = cmx_tree.root();
                                     tracing::info!(
@@ -410,7 +407,7 @@ impl Application for Server {
                                             hex::encode(&hash)
                                         );
                                     }
-                                    store_election_height_inc_position(&mut db_tx, h).await?;
+                                    store_election_height(&mut db_tx, h).await?;
                                 }
                                 TypeOneof::Lock(_) => {
                                     state.locked = true;
@@ -450,8 +447,9 @@ impl Application for Server {
                     tiu!(hasher.finalize().as_bytes())
                 };
                 let height = height as u32;
-                store_height(&mut db_tx, height).await?;
                 store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
+                let cmx_tree_bytes = frontier_to_bytes(&state.cmx_tree)?;
+                store_election_frontier(&mut db_tx, &cmx_tree_bytes).await?;
 
                 state.clear_check_witnesses();
                 state.db_tx = Some(db_tx);

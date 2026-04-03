@@ -10,6 +10,7 @@ use tonic::{Request, Response, Status, async_trait};
 use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
+    db::get_election as fetch_election,
     error::IntoAnyhow,
     lwd::fetch_roots,
     pod::ElectionPropsPub,
@@ -30,15 +31,11 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
-            let (election,): (String,) = query_as(
-                "SELECT data FROM v_elections
-                WHERE id_election = 0",
-            )
-            .fetch_one(&mut *conn)
-            .await
-            .context("get_election")?;
+            let (e, nf_root, cmx_tree_state) = fetch_election(&mut *conn).await?;
             let election = Election {
-                election,
+                election: serde_json::to_string(&e)?,
+                nf_root,
+                cmx_tree_state,
                 ..Default::default()
             };
             Ok::<_, anyhow::Error>(Response::new(election))
@@ -103,8 +100,7 @@ impl VoteStreamer for ZCVServer {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
             let (height, ): (u32, ) = query_as(
-                "SELECT e.height FROM v_elections e, v_state s
-                WHERE e.id_election = 0",
+                "SELECT s.height FROM v_state s WHERE s.id = 0",
             )
             .fetch_one(&mut *conn)
             .await

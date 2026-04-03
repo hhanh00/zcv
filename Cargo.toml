@@ -57,8 +57,7 @@ juniper_warp = {version = "0.9", features = ["subscriptions"]}
 warp = {version = "0.4", features = ["server", "websocket"]}
 
 [workspace.dependencies.zcash-trees]
-git = "https://github.com/hhanh00/zkool2.git"
-rev = "67f580f79484c511bf967d4f4eea7076d733ece3"
+path = "/Users/hanhhuynhhuu/projects/zkool/zcash-trees"
 features = ["imt"]
 
 [workspace.dependencies.pir-client]
