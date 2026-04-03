@@ -1,7 +1,7 @@
 [patch.crates-io.orchard]
 #path = "./orchard"
 git = "https://github.com/hhanh00/orchard.git"
-rev = "047ba570e4282dab7f70a51f84d6e8a58f7fee74"
+rev = "b97d2aba145984c11f4faa5b9e7d5fa0dcace8d0"
 
 [workspace]
 exclude = ["orchard"]

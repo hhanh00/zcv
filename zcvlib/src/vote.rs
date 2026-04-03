@@ -1,52 +1,75 @@
 use std::{collections::HashMap, sync::LazyLock};
 
+use bincode::config::legacy;
 use ff::PrimeField;
 use orchard::{
-    Address,
-    vote::{Ballot, BallotWitnesses, Circuit, ProvingKey, VerifyingKey},
+    Address, Note,
+    vote::{
+        Ballot, BallotWitnesses, Circuit, CmxInclusion, MerklePathGeneric,
+        NfExclusion, ProvingKey, VerifyingKey, vote_with_nf_exclusion,
+    },
 };
 use pasta_curves::Fp;
+use pir_client::ImtProofData;
 use rand_core::OsRng;
 use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 use zcash_protocol::consensus::Network;
+use zcash_trees::warp::{
+    AuthPath, FragmentAuthPath, Witness,
+    hasher::{OrchardHasher, empty_roots},
+    legacy::CommitmentTreeFrontier,
+};
 
 use crate::{
     ZCVResult,
     balance::list_unspent_notes,
     ballot::encrypt_ballot_data_with_spends,
     db::{get_account_address, get_account_sk, get_domain, get_election, get_ivks},
+    error::IntoAnyhow,
+    lwd::fetch_roots,
+    pod::ImtProofDataBin,
     tiu,
 };
 
 pub async fn vote(
     network: &Network,
     conn: &mut SqliteConnection,
+    lwd_url: &str,
+    pir_url: &str,
     id_account: u32,
     memo: &[u8],
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, address) = get_domain(conn).await?;
-    send_vote(network, conn, id_account, domain, &address, memo, amount).await
+    send_vote(network, conn, lwd_url, pir_url, id_account, domain, &address, memo, amount).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send_vote(
     network: &Network,
     conn: &mut SqliteConnection,
+    lwd_url: &str,
+    pir_url: &str,
     id_account: u32,
     domain: Fp,
     address: &str,
     memo: &[u8],
-    amount: u64) -> ZCVResult<Ballot> {
+    amount: u64,
+) -> ZCVResult<Ballot> {
+    tracing::info!("send_vote");
     let (_, recipient) = bech32::decode(address).unwrap();
     let recipient = Address::from_raw_address_bytes(&tiu!(recipient)).unwrap();
 
+    tracing::info!("get_election");
     let e = get_election(conn).await?;
     let sk = if e.need_sig {
         Some(get_account_sk(network, conn, id_account).await?)
     } else {
         None
     };
+    tracing::info!("get_ivks");
     let (fvk, _, _) = get_ivks(network, conn, id_account).await?;
+    tracing::info!("list_unspent_notes");
     let utxos = list_unspent_notes(conn, id_account).await?;
     let notes = utxos
         .into_iter()
@@ -57,37 +80,44 @@ pub async fn send_vote(
         })
         .collect::<Vec<_>>();
 
-    // No ORDER BY because we manually sort
-    let mut nfs = query("SELECT nf FROM vc_nfs")
-        .map(|r: SqliteRow| {
-            let nf: Vec<u8> = r.get(0);
-            Fp::from_repr(tiu!(nf)).unwrap()
-        })
-        .fetch_all(&mut *conn)
-        .await?;
-    nfs.sort();
+    tracing::info!("fetch_roots");
+    // Fetch the stored nf_root and CMX commitment tree frontier from the DB.
+    let (nf_root_bytes, cmx_tree_bytes) = fetch_roots(lwd_url, pir_url, e.end).await?;
+    let nf_root = Fp::from_repr(tiu!(nf_root_bytes)).unwrap();
 
-    // Check that we are not spending a previous nullifier
-    let utxos = list_unspent_notes(conn, id_account).await?;
-    for note in utxos.iter() {
-        let note_nf = Fp::from_repr(tiu!(note.nf.clone())).unwrap();
-        tracing::info!("Tx input note candidate: {:?}", note_nf);
-        if nfs.contains(&note_nf) {
-            panic!("Note should not be already spent");
-        }
+    tracing::info!("cmx_frontier");
+    // Build the CMX edge (FragmentAuthPath) used to complete witnesses.
+    let cmx_frontier = CommitmentTreeFrontier::read(&*cmx_tree_bytes).anyhow()?;
+    let hasher = OrchardHasher::default();
+    let er = empty_roots(&hasher);
+    let edge = cmx_frontier.to_edge(&hasher).to_auth_path(&hasher);
+    let cmx_frontier = cmx_frontier.to_orchard_frontier();
+    let cmx_root = cmx_frontier.root();
+
+    tracing::info!("note_ids");
+    // Fetch the id_note for each unspent note (same filter as list_unspent_notes).
+    let note_ids: Vec<u32> = query(
+        "SELECT n.id_note FROM v_notes n LEFT JOIN v_spends s ON n.id_note = s.id_note
+        WHERE s.id_note IS NULL AND n.account = ?1",
+    )
+    .bind(id_account)
+    .map(|r: SqliteRow| r.get::<u32, _>(0))
+    .fetch_all(&mut *conn)
+    .await?;
+
+    tracing::info!("nf_witnesses");
+    // Build per-note NF exclusion and CMX inclusion proofs via the stored witnesses,
+    // bundled with each note so selection never goes out of sync.
+    let mut notes_with_witnesses: Vec<(Note, u32, NfExclusion, CmxInclusion)> =
+        Vec::with_capacity(note_ids.len());
+
+    for (id_note, (note, pos)) in note_ids.iter().zip(notes.into_iter()) {
+        let (nf_excl, cmx_incl) = get_merkle_proofs(conn, *id_note, &edge, &er).await?;
+        notes_with_witnesses.push((note, pos, nf_excl, cmx_incl));
     }
 
-    let nf_ranges = expand_into_ranges(nfs);
-
-    let cmxs = query("SELECT cmx FROM vc_cmxs ORDER BY id_cmx")
-        .map(|r: SqliteRow| {
-            let cmx: Vec<u8> = r.get(0);
-            Fp::from_repr(tiu!(cmx)).unwrap()
-        })
-        .fetch_all(&mut *conn)
-        .await?;
-
-    let (ballot, _) = orchard::vote::vote(
+    tracing::info!("vote_with_nf_exclusion");
+    let (ballot, _) = vote_with_nf_exclusion(
         domain,
         e.need_sig,
         sk,
@@ -95,9 +125,9 @@ pub async fn send_vote(
         recipient,
         amount,
         memo,
-        &notes,
-        &nf_ranges,
-        &cmxs,
+        &notes_with_witnesses,
+        nf_root,
+        cmx_root.inner(),
         OsRng,
         |message, _, _| {
             tracing::info!("{}", message);
@@ -107,6 +137,41 @@ pub async fn send_vote(
     )?;
 
     Ok(ballot)
+}
+
+pub async fn get_merkle_proofs(
+    conn: &mut SqliteConnection,
+    id_note: u32,
+    edge: &FragmentAuthPath,
+    empty_roots: &AuthPath,
+) -> ZCVResult<(NfExclusion, CmxInclusion)> {
+    let (nf_bytes, cmx_bytes) = query("SELECT nf, cmx FROM v_witnesses WHERE id_note = ?1")
+        .bind(id_note)
+        .map(|r: SqliteRow| {
+            let nf: Vec<u8> = r.get(0);
+            let cmx: Vec<u8> = r.get(1);
+            (nf, cmx)
+        })
+        .fetch_one(&mut *conn)
+        .await?;
+
+    let (nf_bin, _) =
+        bincode::decode_from_slice::<ImtProofDataBin, _>(&nf_bytes, legacy()).unwrap();
+    let nf: ImtProofData = nf_bin.into();
+    let nf_exclusion = NfExclusion {
+        nf_width: nf.width,
+        nf_path: MerklePathGeneric::from_parts(nf.low, nf.leaf_pos, nf.path),
+    };
+
+    let (cmx, _) = bincode::decode_from_slice::<Witness, _>(&cmx_bytes, legacy()).unwrap();
+    let auth_path = cmx.build_auth_path(edge, empty_roots)?;
+    let value = Fp::from_repr(cmx.value).unwrap();
+    let path: [Fp; 32] = auth_path.0.map(|h| Fp::from_repr(h).unwrap());
+    let cmx_inclusion = CmxInclusion {
+        cmx_path: MerklePathGeneric::from_parts(value, cmx.position, path),
+    };
+
+    Ok((nf_exclusion, cmx_inclusion))
 }
 
 pub fn expand_into_ranges(nfs: Vec<Fp>) -> Vec<Fp> {
@@ -164,12 +229,25 @@ pub async fn mint(
 pub async fn delegate(
     network: &Network,
     conn: &mut SqliteConnection,
+    lwd_url: &str,
+    pir_url: &str,
     id_account: u32,
     address: &str,
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, _) = get_domain(conn).await?;
-    send_vote(network, conn, id_account, domain, address, &[], amount).await
+    send_vote(
+        network,
+        conn,
+        lwd_url,
+        pir_url,
+        id_account,
+        domain,
+        address,
+        &[],
+        amount,
+    )
+    .await
 }
 
 fn dummy_witnesses() -> BallotWitnesses {
@@ -250,8 +328,11 @@ pub static VK: LazyLock<VerifyingKey<Circuit>> = LazyLock::new(VerifyingKey::bui
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        db::get_domain,
+        tests::{get_connection, run_scan, test_setup},
+    };
     use anyhow::Result;
-    use crate::{db::get_domain, tests::{get_connection, run_scan, test_setup}};
 
     #[tokio::test]
     #[serial_test::serial]
@@ -259,8 +340,7 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         run_scan(&mut conn).await?;
-        let (_domain, _address) =
-            get_domain(&mut conn).await?;
+        let (_domain, _address) = get_domain(&mut conn).await?;
 
         // TODO
         Ok(())
