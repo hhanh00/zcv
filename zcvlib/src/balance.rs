@@ -34,6 +34,7 @@ pub async fn import_account(
     height: u32,
 ) -> ZCVResult<()> {
     query("DELETE FROM v_notes").execute(&mut *conn).await?;
+    query("DELETE FROM v_witnesses").execute(&mut *conn).await?;
 
     let (fvk, _, _) = get_ivks(network, conn, account).await?;
     let notes = query(
@@ -50,7 +51,8 @@ pub async fn import_account(
         LEFT JOIN spends b ON a.id_note = b.id_note
         WHERE b.id_note IS NULL
         AND a.height < ?1
-        AND a.account = ?2",
+        AND a.account = ?2
+        AND a.pool = 2",
     )
     .bind(height)
     .bind(account)
