@@ -1,39 +1,32 @@
-use std::{
-    collections::{HashMap, HashSet},
-};
+use std::collections::HashMap;
 
 use crate::{
     ZCVResult,
-    api::ProgressReporter,
     db::{
-        derive_spending_key, get_domain, get_ivks, list_unspent_nullifiers, store_ballot_spend,
-        store_cmx, store_election_height_position, store_nf_cmx, store_received_note, store_result,
-        store_spend,
+        derive_spending_key, frontier_to_bytes, get_election_frontier, get_ivks,
+        list_unspent_nullifiers, store_ballot_spend, store_cmx, store_election_frontier,
+        store_election_height, store_received_note, store_result,
     },
     error::IntoAnyhow,
-    rpc::{
-        BlockId, BlockRange, CompactOrchardAction, PoolType,
-        compact_tx_streamer_client::CompactTxStreamerClient,
-    },
+    rpc::{BlockId, compact_tx_streamer_client::CompactTxStreamerClient},
     tiu,
     vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
 use ff::PrimeField;
 use orchard::{
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    note::{ExtractedNoteCommitment, Nullifier},
-    note_encryption::{CompactAction, OrchardDomain},
+    tree::MerkleHashOrchard,
     vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
-use sqlx::{Acquire, SqliteConnection, query, query_as};
+use sqlx::{Acquire, SqliteConnection, query};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
 };
 use tracing::info;
-use zcash_note_encryption::{EphemeralKeyBytes, try_compact_note_decryption};
 use zcash_protocol::consensus::Network;
+use zcash_trees::warp::legacy::CommitmentTreeFrontier;
 
 pub type Client = CompactTxStreamerClient<Channel>;
 pub type VoteClient = VoteStreamerClient<Channel>;
@@ -59,139 +52,6 @@ pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(V
     let nf_root = client.root29().to_repr().to_vec();
 
     Ok((nf_root, orchard_tree_state))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn scan_blocks<PR: ProgressReporter>(
-    network: &Network,
-    conn: &mut SqliteConnection,
-    client: &mut Client,
-    id_accounts: &[u32],
-    pr: &PR,
-) -> ZCVResult<()> {
-    let (start, end, height): (u32, u32, u32) =
-        query_as("SELECT start, end, height FROM v_elections WHERE id_election = 0")
-            .fetch_one(&mut *conn)
-            .await?;
-    if end <= height {
-        return Ok(());
-    }
-    tracing::info!("scan_blocks [{start},{end}]");
-
-    let mut db_tx = conn.begin().await?;
-    query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
-    query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
-    let (domain, _) = get_domain(&mut db_tx).await?;
-
-    let mut ivks = vec![];
-    for id_account in id_accounts {
-        let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
-        ivks.push((
-            *id_account,
-            0,
-            fvk.clone(),
-            PreparedIncomingViewingKey::new(&eivk),
-        ));
-        ivks.push((
-            *id_account,
-            1,
-            fvk.clone(),
-            PreparedIncomingViewingKey::new(&iivk),
-        ));
-    }
-
-    let mut nfs: HashSet<[u8; 32]> = HashSet::new();
-
-    let mut blocks = client
-        .get_block_range(Request::new(BlockRange {
-            start: Some(BlockId {
-                height: start as u64,
-                hash: vec![],
-            }),
-            end: Some(BlockId {
-                height: end as u64,
-                hash: vec![],
-            }),
-            pool_types: vec![PoolType::Orchard.into()],
-        }))
-        .await?
-        .into_inner();
-    let report_interval = (end - start) / 100;
-
-    let mut position = crate::db::get_election_position(&mut db_tx).await?;
-
-    while let Some(block) = blocks.message().await? {
-        let height = block.height as u32;
-        if (height - start).is_multiple_of(report_interval) {
-            let p = (height - start) / report_interval;
-            pr.report(p);
-        }
-
-        for tx in block.vtx {
-            for a in tx.actions {
-                let CompactOrchardAction {
-                    nullifier,
-                    cmx,
-                    ephemeral_key,
-                    ciphertext,
-                } = a;
-                store_nf_cmx(&mut db_tx, &nullifier, &cmx).await?;
-
-                let nf: [u8; 32] = tiu!(nullifier);
-                if nfs.contains(&nf) {
-                    store_spend(&mut db_tx, &nf, height).await?;
-                }
-
-                let act = CompactAction::from_parts(
-                    Nullifier::from_bytes(&nf).unwrap(),
-                    ExtractedNoteCommitment::from_bytes(&tiu!(cmx)).unwrap(),
-                    EphemeralKeyBytes(tiu!(ephemeral_key)),
-                    tiu!(ciphertext),
-                );
-
-                let orchard_domain = OrchardDomain::for_compact_action(&act);
-                for (id_account, scope, fvk, pivk) in ivks.iter() {
-                    if let Some((note, _)) =
-                        try_compact_note_decryption(&orchard_domain, pivk, &act)
-                    {
-                        info!("Found note at {} for {} zats", height, note.value().inner());
-
-                        store_received_note(
-                            &mut db_tx,
-                            domain,
-                            *id_account,
-                            fvk,
-                            None,
-                            &note,
-                            &[], // memos are not used prior to voting
-                            height,
-                            position,
-                            *scope,
-                        )
-                        .await?;
-
-                        // track new note nullifier
-                        let nf = note.nullifier(fvk).to_bytes();
-                        nfs.insert(nf);
-                    }
-                }
-
-                position += 1;
-            }
-        }
-    }
-    query(
-        "UPDATE v_elections SET height = ?1, position = ?2
-    WHERE id_election = 0",
-    )
-    .bind(end)
-    .bind(position)
-    .execute(&mut *db_tx)
-    .await?;
-    db_tx.commit().await?;
-    Ok(())
 }
 
 pub async fn scan_ballots(
@@ -242,7 +102,15 @@ pub async fn scan_ballots(
         .await?
         .into_inner();
 
-    let mut position = crate::db::get_election_position(&mut db_tx).await?;
+    let cmx_tree_bytes = get_election_frontier(&mut db_tx).await?;
+    let mut cmx_tree = if cmx_tree_bytes.is_empty() {
+        incrementalmerkletree::frontier::Frontier::<MerkleHashOrchard, 32>::empty()
+    } else {
+        CommitmentTreeFrontier::read(cmx_tree_bytes.as_slice())
+            .anyhow()?
+            .to_orchard_frontier()
+    };
+    let mut position = cmx_tree.tree_size() as u32;
 
     while let Some(ballot) = ballots.message().await? {
         let height = ballot.height;
@@ -252,6 +120,8 @@ pub async fn scan_ballots(
         for a in data.actions.iter() {
             // do not store nf since we are on the voting chain
             store_cmx(&mut db_tx, &a.cmx).await?;
+            let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
+            cmx_tree.append(cmx);
             if let Some(id_account) = nfs.get(&a.nf) {
                 store_ballot_spend(&mut db_tx, *id_account, &a.nf, height).await?;
             }
@@ -277,14 +147,18 @@ pub async fn scan_ballots(
                     // track new note nullifier
                     let nf = note.nullifier_domain(fvk, domain).to_bytes();
                     nfs.insert(nf, *id_account);
+
+                    // TODO Calculate new nf and cmx proofs
+                    // Store in v_witnesses
                 }
             }
-
             position += 1;
         }
     }
-    tracing::info!("height: {end}, position: {position}");
-    store_election_height_position(&mut db_tx, end, position).await?;
+    tracing::info!("height: {end}, position: {}", cmx_tree.tree_size());
+    store_election_height(&mut db_tx, end).await?;
+    let cmx_tree_bytes = frontier_to_bytes(&cmx_tree)?;
+    store_election_frontier(&mut db_tx, &cmx_tree_bytes).await?;
     db_tx.commit().await?;
     Ok(())
 }
@@ -335,18 +209,3 @@ pub async fn decode_ballots(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use anyhow::Result;
-
-    use crate::tests::{get_connection, run_scan, test_setup};
-
-    #[tokio::test]
-    #[serial_test::serial]
-    pub async fn test_scan() -> Result<()> {
-        let mut conn = get_connection().await?;
-        test_setup(&mut conn).await?;
-        run_scan(&mut conn).await?;
-        Ok(())
-    }
-}

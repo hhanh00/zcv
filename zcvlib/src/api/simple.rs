@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use ff::PrimeField;
 use orchard::vote::Ballot;
 use pasta_curves::Fp;
@@ -7,9 +7,8 @@ use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
 
-use crate::api::ProgressReporter;
 use crate::context::Context;
-use crate::db::{get_election_height, get_election_opt};
+use crate::db::{get_election, get_election_height};
 use crate::lwd::{VoteClient, connect};
 use crate::pod::{ElectionProps, ElectionPropsPub};
 use crate::tiu;
@@ -27,7 +26,7 @@ pub fn compile_election_def(election_json: String, seed: String) -> Result<Strin
 pub async fn store_election(election_json: String, context: &Context) -> Result<Vec<u8>> {
     let mut conn = context.connect().await?;
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
-    crate::db::store_election(&mut conn, &election).await?;
+    crate::db::store_election(&mut conn, &election, &[], &[]).await?;
     Ok(election.domain.clone())
 }
 
@@ -40,20 +39,6 @@ pub async fn client_delete_election(context: &Context) -> Result<()> {
 pub async fn client_delete_election_data(context: &Context, new_account: Option<u32>) -> Result<()> {
     let mut conn = context.connect().await?;
     crate::db::client_delete_election_data(&mut conn, new_account).await?;
-    Ok(())
-}
-
-pub async fn scan_notes<PR: ProgressReporter>(id_accounts: Vec<u32>, pr: &PR, context: &Context) -> Result<()> {
-    let mut conn = context.connect().await?;
-    let mut client = connect(&context.lwd_url).await?;
-    crate::lwd::scan_blocks(
-        &Network::MainNetwork,
-        &mut conn,
-        &mut client,
-        &id_accounts,
-        pr,
-    )
-    .await?;
     Ok(())
 }
 
@@ -197,7 +182,7 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
     Ok(address)
 }
 
-pub async fn import_election(context: &Context) -> Result<()>
+pub async fn import_election(context: &Context) -> Result<(Vec<u8>, Vec<u8>)>
 {
     let mut client = connect_to_vote_server(context).await?;
     let election_json = client
@@ -205,16 +190,18 @@ pub async fn import_election(context: &Context) -> Result<()>
         .await?
         .into_inner()
         .election;
-    store_election(election_json, context).await?;
-    Ok(())
+    let election: crate::pod::ElectionPropsPub = serde_json::from_str(&election_json)?;
+    let (nf_root, cmx_tree) = crate::lwd::fetch_roots(&context.lwd_url, &context.pir_url, election.end).await?;
+    let mut conn = context.connect().await?;
+    crate::db::store_election(&mut conn, &election, &nf_root, &cmx_tree).await?;
+    Ok((nf_root, cmx_tree))
 }
 
 pub async fn import_account(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let mut client = connect(&context.lwd_url).await?;
     let pir_client = PirClient::connect(&context.pir_url).await?;
-    let election = get_election_opt(&mut conn).await?
-        .context("No Election set")?;
+    let (election, ..) = get_election(&mut conn).await?;
     let domain = Fp::from_repr(tiu!(election.domain)).unwrap();
     let height = election.end;
     crate::balance::import_account(&Network::MainNetwork,

@@ -14,7 +14,6 @@ use crate::{
     ballot::encrypt_ballot_data,
     context::BFTContext,
     db::{create_schema, set_account_seed, store_election},
-    lwd::{connect, scan_blocks},
     pod::ElectionProps,
 };
 
@@ -88,29 +87,6 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     let e = TEST_ELECTION;
     let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
     let e = e.build(TEST_ELECTION_SEED)?;
-    store_election(conn, &e).await?;
-    Ok(())
-}
-
-pub async fn run_scan(conn: &mut SqliteConnection) -> Result<()> {
-    let (c,): (u32,) = query_as("SELECT COUNT(*) FROM v_notes")
-        .fetch_one(&mut *conn)
-        .await?;
-    if c != 0 {
-        return Ok(());
-    }
-
-    let mut client = connect("https://zec.rocks").await?;
-    scan_blocks(
-        &Network::MainNetwork,
-        conn,
-        &mut client,
-        &[0],
-        &(),
-    )
-    .await?;
-    // Sleep to give some time for the scan to commit
-    // the utxos to the db
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    store_election(conn, &e, &[], &[]).await?;
     Ok(())
 }
