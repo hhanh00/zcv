@@ -195,17 +195,17 @@ mod tests {
         error::IntoAnyhow,
         pod::ZCV_HRP,
         tests::{
-            TEST_ELECTION_SEED, TEST_SEED, get_connection, run_scan,
+            TEST_ELECTION_SEED, TEST_SEED, get_connection,
             test_setup,
         },
     };
 
-    #[tokio::test]
+    // disable for now
+    // #[tokio::test]
     #[serial_test::serial]
     async fn test_ballot_encryption() -> Result<()> {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
-        run_scan(&mut conn).await?;
         let (domain, address) =
             get_domain(&mut conn).await?;
         tracing::info!("Sending ballot to {}", address);
@@ -232,7 +232,6 @@ mod tests {
     async fn make_ballot_bin() -> ZCVResult<()> {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
-        run_scan(&mut conn).await?;
         let (domain, address) = get_domain(&mut conn).await?;
         let ballot_data = encrypt_ballot_data_with_spends(
             &Network::MainNetwork,

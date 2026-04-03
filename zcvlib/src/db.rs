@@ -10,8 +10,10 @@ use orchard::{
     keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
     vote::{Ballot, BallotData, BallotWitnesses},
 };
+use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
+use zcash_trees::warp::legacy::CommitmentTreeFrontier;
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -74,7 +76,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         version = 1;
     }
 
-    if version != 2 {
+    if version != 4 {
         drop_schema(&mut *conn).await?;
     }
 
@@ -83,14 +85,15 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         id INTEGER PRIMARY KEY,
         version INTEGER,
         account INTEGER,
-        height INTEGER NOT NULL DEFAULT 0)",
+        height INTEGER NOT NULL DEFAULT 0,
+        frontier BLOB NOT NULL DEFAULT (X''))",
     )
     .execute(&mut *conn)
     .await?;
 
     query(
         "INSERT INTO v_state(id, version)
-    VALUES (0, 2) ON CONFLICT DO NOTHING",
+    VALUES (0, 4) ON CONFLICT DO NOTHING",
     )
     .execute(&mut *conn)
     .await?;
@@ -108,16 +111,17 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         name TEXT NOT NULL,
         start INTEGER NOT NULL,
         end INTEGER NOT NULL,
-        height INTEGER NOT NULL,
         need_sig BOOL NOT NULL,
         domain BLOB NOT NULL,
         address TEXT NOT NULL,
         data TEXT NOT NULL,
-        position INTEGER NOT NULL,
+        nf_root BLOB NOT NULL DEFAULT (X''),
+        cmx_tree BLOB NOT NULL DEFAULT (X''),
         UNIQUE (domain))",
     )
     .execute(&mut *conn)
     .await?;
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS v_notes(
         id_note INTEGER PRIMARY KEY,
@@ -274,40 +278,45 @@ pub async fn get_account_address(
 pub async fn store_election(
     conn: &mut SqliteConnection,
     election: &ElectionPropsPub,
+    nf_root: &[u8],
+    cmx_tree: &[u8],
 ) -> ZCVResult<()> {
     let json = serde_json::to_string(election).anyhow()?;
     query(
         "INSERT INTO v_elections
-            (id_election, domain, start, end, height, position, need_sig, name, address, data)
-            VALUES (0, ?, ?, ?, ?, 0, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            (id_election, domain, start, end, need_sig, name, address, data, nf_root, cmx_tree)
+            VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
             domain = excluded.domain,
             start = excluded.start,
             end = excluded.end,
             need_sig = excluded.need_sig,
             name = excluded.name,
             data = excluded.data,
-            address = excluded.address",
-        // Do not reset the height
+            address = excluded.address,
+            nf_root = excluded.nf_root,
+            cmx_tree = excluded.cmx_tree",
     )
     .bind(election.domain.as_slice())
     .bind(election.start)
     .bind(election.end)
-    .bind(election.start - 1)
     .bind(election.need_sig)
     .bind(&election.name)
     .bind(&election.address)
     .bind(&json)
+    .bind(nf_root)
+    .bind(cmx_tree)
     .execute(&mut *conn)
     .await
     .context("store_election")?;
-    Ok(())
-}
-
-pub async fn store_height(conn: &mut SqliteConnection, height: u32) -> ZCVResult<()> {
-    query("UPDATE v_state SET height = ?1 WHERE id = 0")
-    .bind(height)
-    .execute(conn)
-    .await?;
+    // Initialize height and frontier in v_state (skips scan until explicitly reset)
+    query("UPDATE v_state SET height = ?1 WHERE id = 0 AND height = 0")
+        .bind(election.end)
+        .execute(&mut *conn)
+        .await?;
+    query("UPDATE v_state SET frontier = ?1 WHERE id = 0 AND LENGTH(frontier) = 0")
+        .bind(cmx_tree)
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
@@ -324,7 +333,7 @@ pub async fn client_delete_election_data(
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
     query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
     query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
-    query("UPDATE v_elections SET height = start - 1 WHERE id_election = 0")
+    query("UPDATE v_state SET height = (SELECT start - 1 FROM v_elections WHERE id_election = 0) WHERE id = 0")
         .execute(&mut *db_tx)
         .await?;
 
@@ -369,22 +378,18 @@ pub async fn get_ivks(
     Ok((fvk, ivks.0, ivks.1))
 }
 
-pub async fn get_election(conn: &mut SqliteConnection) -> ZCVResult<ElectionPropsPub> {
-    get_election_opt(conn)
-        .await?
-        .ok_or(anyhow!("No Election Set").into())
-}
-
-pub async fn get_election_opt(conn: &mut SqliteConnection) -> ZCVResult<Option<ElectionPropsPub>> {
-    let election = query("SELECT data FROM v_elections WHERE id_election = 0")
-        .map(|r: SqliteRow| r.get::<String, _>(0))
-        .fetch_optional(conn)
-        .await
-        .context("get_election")?;
-    let domain = election
-        .map(|e| serde_json::from_str::<ElectionPropsPub>(&e))
-        .transpose()?;
-    Ok(domain)
+pub async fn get_election(
+    conn: &mut SqliteConnection,
+) -> ZCVResult<(ElectionPropsPub, Vec<u8>, Vec<u8>)> {
+    let row: Option<(String, Vec<u8>, Vec<u8>)> = query_as(
+        "SELECT data, nf_root, cmx_tree FROM v_elections WHERE id_election = 0",
+    )
+    .fetch_optional(conn)
+    .await
+    .context("get_election")?;
+    let (data, nf_root, cmx_tree) = row.ok_or(anyhow!("No Election Set"))?;
+    let e = serde_json::from_str::<ElectionPropsPub>(&data)?;
+    Ok((e, nf_root, cmx_tree))
 }
 
 pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> {
@@ -398,59 +403,6 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
     let domain = Fp::from_repr(tiu!(domain)).unwrap();
     Ok((domain, address))
 }
-
-// pub async fn get_apphash(conn: &mut SqliteConnection) -> ZCVResult<(Option<u32>, Option<Vec<u8>>)> {
-//     let (height, apphash) = query("SELECT height, apphash FROM v_state WHERE id = 0")
-//         .map(|r: SqliteRow| {
-//             let height: Option<u32> = r.get(0);
-//             let apphash: Option<Vec<u8>> = r.get(1);
-//             (height, apphash)
-//         })
-//         .fetch_one(conn)
-//         .await?;
-//     Ok((height, apphash))
-// }
-
-// pub async fn store_apphash(
-//     conn: &mut SqliteConnection,
-//     height: u32,
-//     apphash: &[u8],
-// ) -> ZCVResult<()> {
-//     query("UPDATE v_state SET height = ?1, apphash = ?2 WHERE id = 0")
-//         .bind(height)
-//         .bind(apphash)
-//         .execute(conn)
-//         .await?;
-//     Ok(())
-// }
-
-// pub async fn get_roots(conn: &mut SqliteConnection) -> ZCVResult<Option<(Vec<u8>, Vec<u8>)>> {
-//     let (nf_root, cmx_tree) = query("SELECT nf_root, cmx_tree FROM v_elections WHERE id_election = 0")
-//         .map(|r: SqliteRow| {
-//             let nf_root: Option<Vec<u8>> = r.get(0);
-//             let cmx_tree: Option<Vec<u8>> = r.get(1);
-//             (nf_root, cmx_tree)
-//         })
-//         .fetch_one(&mut *conn)
-//         .await?;
-//     if let Some(nf_root) = nf_root {
-//         return Ok(Some((nf_root, cmx_tree.unwrap())));
-//     }
-//     Ok(None)
-// }
-
-// pub async fn store_roots(
-//     conn: &mut SqliteConnection,
-//     nf_root: &[u8],
-//     cmx_tree: &[u8],
-// ) -> ZCVResult<()> {
-//     query("UPDATE v_elections SET nf_root = ?1, cmx_tree = ?2 WHERE id_election = 0")
-//         .bind(nf_root)
-//         .bind(cmx_tree)
-//         .execute(conn)
-//         .await?;
-//     Ok(())
-// }
 
 pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8], height: u32) -> ZCVResult<()> {
     query("INSERT INTO vs_cmxs(cmx, height) VALUES (?1, ?2) ON CONFLICT DO NOTHING")
@@ -473,24 +425,11 @@ pub async fn check_cmx_root(conn: &mut SqliteConnection, cmx_root: &[u8]) -> ZCV
     Ok(())
 }
 
-pub async fn store_election_height_position(
-    db_tx: &mut SqliteConnection,
-    height: u32,
-    position: u32,
-) -> ZCVResult<()> {
-    query("UPDATE v_elections SET height = ?1, position = ?2 WHERE id_election = 0")
-        .bind(height)
-        .bind(position)
-        .execute(db_tx)
-        .await?;
-    Ok(())
-}
-
-pub async fn store_election_height_inc_position(
+pub async fn store_election_height(
     db_tx: &mut SqliteConnection,
     height: u32,
 ) -> ZCVResult<()> {
-    query("UPDATE v_elections SET height = ?1, position = position + 1 WHERE id_election = 0")
+    query("UPDATE v_state SET height = ?1 WHERE id = 0")
         .bind(height)
         .execute(db_tx)
         .await?;
@@ -498,19 +437,41 @@ pub async fn store_election_height_inc_position(
 }
 
 pub async fn get_election_height(conn: &mut SqliteConnection) -> ZCVResult<u32> {
-    let (height,): (u32,) = query_as("SELECT height FROM v_elections WHERE id_election = 0")
+    let (height,): (u32,) = query_as("SELECT height FROM v_state WHERE id = 0")
         .fetch_one(conn)
         .await
         .context("get election height")?;
     Ok(height)
 }
 
-pub async fn get_election_position(conn: &mut SqliteConnection) -> ZCVResult<u32> {
-    let (position,): (u32,) = query_as("SELECT position FROM v_elections WHERE id_election = 0")
-        .fetch_one(conn)
-        .await
-        .context("get election position")?;
-    Ok(position)
+pub async fn store_election_frontier(
+    conn: &mut SqliteConnection,
+    frontier: &[u8],
+) -> ZCVResult<()> {
+    query("UPDATE v_state SET frontier = ?1 WHERE id = 0")
+        .bind(frontier)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_election_frontier(conn: &mut SqliteConnection) -> ZCVResult<Vec<u8>> {
+    let (frontier,): (Vec<u8>,) =
+        query_as("SELECT frontier FROM v_state WHERE id = 0")
+            .fetch_one(conn)
+            .await
+            .context("get election frontier")?;
+    Ok(frontier)
+}
+
+pub fn frontier_to_bytes(
+    frontier: &incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
+) -> ZCVResult<Vec<u8>> {
+    let mut out = vec![];
+    CommitmentTreeFrontier::from_orchard_frontier(frontier)
+        .write(&mut out)
+        .anyhow()?;
+    Ok(out)
 }
 
 pub async fn list_unspent_nullifiers(
@@ -803,7 +764,7 @@ mod tests {
         let mut conn = get_connection().await?;
         test_setup(&mut conn).await?;
         query("DELETE FROM v_ballots").execute(&mut *conn).await?;
-        let election = get_election(&mut conn).await?;
+        let (election, ..) = get_election(&mut conn).await?;
         let (domain, _address) = get_domain(&mut conn).await?;
         let dummy_ballot = Ballot {
             data: BallotData {
