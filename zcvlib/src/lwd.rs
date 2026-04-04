@@ -4,15 +4,16 @@ use crate::{
     ZCVResult,
     db::{
         derive_spending_key, get_election_frontier, get_ivks,
-        list_election_witnesses, list_unspent_nullifiers, store_ballot_spend, store_cmx,
-        store_election_frontier, store_election_height,
-        store_received_note, store_result,
+        list_election_witnesses, list_unspent_nullifiers,
+        store_ballot_spend, store_election_frontier, store_election_height,
+        store_election_witness, store_received_note, store_result,
     },
     error::IntoAnyhow,
     rpc::{BlockId, compact_tx_streamer_client::CompactTxStreamerClient},
     tiu,
     vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
 };
+use bincode::config::legacy;
 use ff::PrimeField;
 use orchard::{
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
@@ -98,11 +99,13 @@ pub async fn scan_ballots(
         .into_inner();
 
     let hasher = OrchardHasher::default();
+    tracing::info!("get_election_frontier");
     let cmx_tree_bytes = get_election_frontier(&mut db_tx).await?;
     let mut edge = Edge::read(cmx_tree_bytes.as_slice()).anyhow()?;
     let mut position = edge.size() as u32;
     let initial_position = position;
 
+    tracing::info!("ballot loop");
     let mut new_notes = vec![];
     let mut cmxs = vec![];
     while let Some(ballot) = ballots.message().await? {
@@ -111,8 +114,6 @@ pub async fn scan_ballots(
         let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
         for a in data.actions.iter() {
-            // do not store nf since we are on the voting chain
-            store_cmx(&mut db_tx, &a.cmx).await?;
             cmxs.push(Some(a.cmx));
 
             if let Some(id_account) = nfs.get(&a.nf) {
@@ -158,7 +159,8 @@ pub async fn scan_ballots(
         }
 
         for (npos, _n, w) in new_notes.iter_mut() {
-            let nidx = (*npos - position) as usize;
+            let note_pos = *npos >> depth;
+            let nidx = (note_pos - position) as usize;
 
             if depth == 0 {
                 w.position = *npos;
@@ -192,7 +194,7 @@ pub async fn scan_ballots(
 
         let len = cmxs.len();
         if len >= 2 {
-            for (_u32, _n, w) in old_notes.iter_mut() {
+            for (_, _, w) in old_notes.iter_mut() {
                 if w.ommers.0[depth].is_none() {
                     assert!(cmxs[1].is_some());
                     w.ommers.0[depth] = cmxs[1];
@@ -209,6 +211,17 @@ pub async fn scan_ballots(
         let pairs = len / 2;
         let mut cmxs2 = hasher.parallel_combine_opt(depth as u8, &cmxs, pairs);
         std::mem::swap(&mut cmxs, &mut cmxs2);
+    }
+
+    tracing::info!("root = {}", hex::encode(edge.root(&hasher)));
+    let edge_auth_path = edge.to_auth_path(&hasher);
+    // store updated witnesses (old and new)
+    for (id_note, w) in old_notes.iter().map(|(id, _, w)| (Some(*id), w))
+        .chain(new_notes.iter().map(|(_, _, w)| (None, w)))
+    {
+        tracing::info!("w root = {}", hex::encode(w.root(&edge_auth_path.0, &hasher)));
+        let w_bytes = bincode::encode_to_vec(w, legacy()).anyhow()?;
+        store_election_witness(&mut db_tx, id_note, &w_bytes).await?;
     }
 
     tracing::info!("height: {end}, position: {}", edge.size());
