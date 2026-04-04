@@ -2,10 +2,10 @@ use std::pin::Pin;
 
 use anyhow::{Context, anyhow};
 use bech32::{Bech32m, Hrp};
+use bincode::config::legacy;
 use bip39::Mnemonic;
 use ff::PrimeField;
 use futures::StreamExt;
-use bincode::config::legacy;
 use orchard::{
     Note,
     keys::{Diversifier, FullViewingKey, IncomingViewingKey, SpendingKey},
@@ -13,11 +13,11 @@ use orchard::{
     value::NoteValue,
     vote::{Ballot, BallotData, BallotWitnesses},
 };
-use zcash_trees::warp::Witness;
 use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
-use zcash_trees::warp::{Edge, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 use zcash_protocol::consensus::{Network, NetworkConstants};
+use zcash_trees::warp::Witness;
+use zcash_trees::warp::{Edge, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 use zip32::{AccountId, Scope};
 
 use crate::{
@@ -178,11 +178,9 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
-    let _ = query(
-        "ALTER TABLE vs_cmxs ADD COLUMN height INTEGER",
-    )
-    .execute(&mut *conn)
-    .await;
+    let _ = query("ALTER TABLE vs_cmxs ADD COLUMN height INTEGER")
+        .execute(&mut *conn)
+        .await;
     query(
         "CREATE TABLE IF NOT EXISTS v_actions(
         id_action INTEGER PRIMARY KEY,
@@ -312,18 +310,20 @@ pub async fn store_election(
     .await
     .context("store_election")?;
 
-    // create frontier from edge of cmx_tree
-    let cmx_frontier = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
-    let hasher = OrchardHasher::default();
-    let edge = cmx_frontier.to_edge(&hasher);
-    let mut frontier = vec![];
-    edge.write(&mut frontier).anyhow()?;
+    if !cmx_tree.is_empty() {
+        // create frontier from edge of cmx_tree
+        let cmx_frontier = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
+        let hasher = OrchardHasher::default();
+        let edge = cmx_frontier.to_edge(&hasher);
+        let mut frontier = vec![];
+        edge.write(&mut frontier).anyhow()?;
 
-    query("UPDATE v_state SET height = ?1, frontier = ?2 WHERE id = 0")
-        .bind(election.end)
-        .bind(frontier.as_slice())
-        .execute(&mut *conn)
-        .await?;
+        query("UPDATE v_state SET height = ?1, frontier = ?2 WHERE id = 0")
+            .bind(election.end)
+            .bind(frontier.as_slice())
+            .execute(&mut *conn)
+            .await?;
+    }
     Ok(())
 }
 
@@ -388,12 +388,11 @@ pub async fn get_ivks(
 pub async fn get_election(
     conn: &mut SqliteConnection,
 ) -> ZCVResult<(ElectionPropsPub, Vec<u8>, Vec<u8>)> {
-    let row: Option<(String, Vec<u8>, Vec<u8>)> = query_as(
-        "SELECT data, nf_root, cmx_tree FROM v_elections WHERE id_election = 0",
-    )
-    .fetch_optional(conn)
-    .await
-    .context("get_election")?;
+    let row: Option<(String, Vec<u8>, Vec<u8>)> =
+        query_as("SELECT data, nf_root, cmx_tree FROM v_elections WHERE id_election = 0")
+            .fetch_optional(conn)
+            .await
+            .context("get_election")?;
     let (data, nf_root, cmx_tree) = row.ok_or(anyhow!("No Election Set"))?;
     let e = serde_json::from_str::<ElectionPropsPub>(&data)?;
     Ok((e, nf_root, cmx_tree))
@@ -432,10 +431,7 @@ pub async fn check_cmx_root(conn: &mut SqliteConnection, cmx_root: &[u8]) -> ZCV
     Ok(())
 }
 
-pub async fn store_election_height(
-    db_tx: &mut SqliteConnection,
-    height: u32,
-) -> ZCVResult<()> {
+pub async fn store_election_height(db_tx: &mut SqliteConnection, height: u32) -> ZCVResult<()> {
     query("UPDATE v_state SET height = ?1 WHERE id = 0")
         .bind(height)
         .execute(db_tx)
@@ -451,10 +447,7 @@ pub async fn get_election_height(conn: &mut SqliteConnection) -> ZCVResult<u32> 
     Ok(height)
 }
 
-pub async fn store_election_frontier(
-    conn: &mut SqliteConnection,
-    edge: &Edge,
-) -> ZCVResult<()> {
+pub async fn store_election_frontier(conn: &mut SqliteConnection, edge: &Edge) -> ZCVResult<()> {
     let mut bytes = vec![];
     edge.write(&mut bytes).anyhow()?;
     Edge::read(&*bytes).anyhow()?;
@@ -466,14 +459,12 @@ pub async fn store_election_frontier(
 }
 
 pub async fn get_election_frontier(conn: &mut SqliteConnection) -> ZCVResult<Vec<u8>> {
-    let (frontier,): (Vec<u8>,) =
-        query_as("SELECT frontier FROM v_state WHERE id = 0")
-            .fetch_one(conn)
-            .await
-            .context("get election frontier")?;
+    let (frontier,): (Vec<u8>,) = query_as("SELECT frontier FROM v_state WHERE id = 0")
+        .fetch_one(conn)
+        .await
+        .context("get election frontier")?;
     Ok(frontier)
 }
-
 
 pub async fn list_unspent_nullifiers(
     conn: &mut SqliteConnection,
@@ -595,7 +586,11 @@ pub(crate) fn note_from_parts(
     rseed: Vec<u8>,
     value: u64,
 ) -> Note {
-    let oscope = if scope == 0 { Scope::External } else { Scope::Internal };
+    let oscope = if scope == 0 {
+        Scope::External
+    } else {
+        Scope::Internal
+    };
     let diversifier = Diversifier::from_bytes(tiu!(diversifier));
     let recipient = fvk.address(diversifier, oscope);
     let rho = Rho::from_bytes(&tiu!(rho)).unwrap();
@@ -635,7 +630,6 @@ pub async fn list_election_witnesses(
 
     Ok(result)
 }
-
 
 pub async fn store_election_witness(
     conn: &mut SqliteConnection,
