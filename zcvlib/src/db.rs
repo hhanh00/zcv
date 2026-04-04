@@ -634,13 +634,17 @@ pub async fn list_election_witnesses(
 pub async fn store_election_witness(
     conn: &mut SqliteConnection,
     id_note: Option<u32>,
+    nf_witness: &[u8],
     cmx_witness: &[u8],
 ) -> ZCVResult<()> {
     query(
-        "INSERT INTO v_witnesses(id_note, nf, cmx) VALUES (?1, X'', ?2)
-        ON CONFLICT(id_note) DO UPDATE SET cmx = excluded.cmx",
+        "INSERT INTO v_witnesses(id_note, nf, cmx) VALUES (?1, ?2, ?3)
+        ON CONFLICT(id_note) DO UPDATE SET
+        nf = excluded.nf,
+        cmx = excluded.cmx",
     )
     .bind(id_note)
+    .bind(nf_witness)
     .bind(cmx_witness)
     .execute(conn)
     .await?;

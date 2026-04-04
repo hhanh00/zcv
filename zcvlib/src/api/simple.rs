@@ -46,6 +46,9 @@ pub async fn scan_ballots(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
+    let pir_client = PirClient::connect(&context.pir_url).await?;
+    let (election, ..) = get_election(&mut conn).await?;
+    let domain = Fp::from_repr(tiu!(election.domain)).unwrap();
     let start = get_election_height(&mut conn).await? + 1;
     let rep = client
         .get_latest_vote_height(Request::new(Empty {}))
@@ -55,6 +58,8 @@ pub async fn scan_ballots(id_account: u32, context: &Context) -> Result<()> {
         &Network::MainNetwork,
         &mut conn,
         &mut client,
+        &pir_client,
+        domain,
         id_account,
         start,
         end,
