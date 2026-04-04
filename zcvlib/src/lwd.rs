@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use crate::{
     ZCVResult,
     db::{
-        derive_spending_key, frontier_to_bytes, get_election_frontier, get_ivks,
-        list_unspent_nullifiers, store_ballot_spend, store_cmx, store_election_frontier,
-        store_election_height, store_received_note, store_result,
+        derive_spending_key, get_election_frontier, get_ivks,
+        list_election_witnesses, list_unspent_nullifiers, store_ballot_spend, store_cmx,
+        store_election_frontier, store_election_height,
+        store_received_note, store_result,
     },
     error::IntoAnyhow,
     rpc::{BlockId, compact_tx_streamer_client::CompactTxStreamerClient},
@@ -15,7 +16,6 @@ use crate::{
 use ff::PrimeField;
 use orchard::{
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    tree::MerkleHashOrchard,
     vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
@@ -26,7 +26,7 @@ use tonic::{
 };
 use tracing::info;
 use zcash_protocol::consensus::Network;
-use zcash_trees::warp::legacy::CommitmentTreeFrontier;
+use zcash_trees::warp::{Edge, Hasher, Witness, hasher::OrchardHasher};
 
 pub type Client = CompactTxStreamerClient<Channel>;
 pub type VoteClient = VoteStreamerClient<Channel>;
@@ -46,8 +46,7 @@ pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(V
         }))
         .await?
         .into_inner();
-    let orchard_tree_state = hex::decode(tree_state.orchard_tree)
-    .anyhow()?;
+    let orchard_tree_state = hex::decode(tree_state.orchard_tree).anyhow()?;
     let client = pir_client::PirClient::connect(pir_url).await?;
     let nf_root = client.root29().to_repr().to_vec();
 
@@ -58,7 +57,7 @@ pub async fn scan_ballots(
     network: &Network,
     conn: &mut SqliteConnection,
     client: &mut VoteClient,
-    id_accounts: &[u32],
+    id_account: u32,
     start: u32,
     end: u32,
 ) -> ZCVResult<()> {
@@ -70,28 +69,24 @@ pub async fn scan_ballots(
     let mut db_tx = conn.begin().await?;
     crate::db::delete_range(&mut db_tx, start, end).await?;
     let mut ivks = vec![];
-    for id_account in id_accounts {
-        let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, *id_account).await?;
-        ivks.push((
-            *id_account,
-            fvk.clone(),
-            0,
-            PreparedIncomingViewingKey::new(&eivk),
-        ));
-        ivks.push((
-            *id_account,
-            fvk.clone(),
-            1,
-            PreparedIncomingViewingKey::new(&iivk),
-        ));
-    }
+    let (fvk, eivk, iivk) = get_ivks(network, &mut db_tx, id_account).await?;
+    ivks.push((
+        id_account,
+        fvk.clone(),
+        0,
+        PreparedIncomingViewingKey::new(&eivk),
+    ));
+    ivks.push((
+        id_account,
+        fvk.clone(),
+        1,
+        PreparedIncomingViewingKey::new(&iivk),
+    ));
 
     let mut nfs: HashMap<[u8; 32], u32> = HashMap::new();
-    for id_account in id_accounts {
-        for dnf in list_unspent_nullifiers(&mut db_tx, *id_account).await? {
-            tracing::info!("dnf: {}", hex::encode(&dnf));
-            nfs.insert(tiu!(dnf), *id_account);
-        }
+    for dnf in list_unspent_nullifiers(&mut db_tx, id_account).await? {
+        tracing::info!("dnf: {}", hex::encode(&dnf));
+        nfs.insert(tiu!(dnf), id_account);
     }
 
     let mut ballots = client
@@ -102,16 +97,14 @@ pub async fn scan_ballots(
         .await?
         .into_inner();
 
+    let hasher = OrchardHasher::default();
     let cmx_tree_bytes = get_election_frontier(&mut db_tx).await?;
-    let mut cmx_tree = if cmx_tree_bytes.is_empty() {
-        incrementalmerkletree::frontier::Frontier::<MerkleHashOrchard, 32>::empty()
-    } else {
-        CommitmentTreeFrontier::read(cmx_tree_bytes.as_slice())
-            .anyhow()?
-            .to_orchard_frontier()
-    };
-    let mut position = cmx_tree.tree_size() as u32;
+    let mut edge = Edge::read(cmx_tree_bytes.as_slice()).anyhow()?;
+    let mut position = edge.size() as u32;
+    let initial_position = position;
 
+    let mut new_notes = vec![];
+    let mut cmxs = vec![];
     while let Some(ballot) = ballots.message().await? {
         let height = ballot.height;
         let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
@@ -120,8 +113,8 @@ pub async fn scan_ballots(
         for a in data.actions.iter() {
             // do not store nf since we are on the voting chain
             store_cmx(&mut db_tx, &a.cmx).await?;
-            let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
-            cmx_tree.append(cmx);
+            cmxs.push(Some(a.cmx));
+
             if let Some(id_account) = nfs.get(&a.nf) {
                 store_ballot_spend(&mut db_tx, *id_account, &a.nf, height).await?;
             }
@@ -144,21 +137,83 @@ pub async fn scan_ballots(
                     )
                     .await?;
 
+                    new_notes.push((position, note, Witness::default()));
+
                     // track new note nullifier
                     let nf = note.nullifier_domain(fvk, domain).to_bytes();
                     nfs.insert(nf, *id_account);
-
-                    // TODO Calculate new nf and cmx proofs
-                    // Store in v_witnesses
                 }
             }
             position += 1;
         }
     }
-    tracing::info!("height: {end}, position: {}", cmx_tree.tree_size());
+
+    let mut old_notes = list_election_witnesses(&mut db_tx, &fvk, start).await?;
+
+    for depth in 0..zcash_trees::warp::MERKLE_DEPTH as usize {
+        let mut position = initial_position >> depth;
+        if position % 2 == 1 {
+            cmxs.insert(0, Some(edge.0[depth].unwrap()));
+            position -= 1;
+        }
+
+        for (npos, _n, w) in new_notes.iter_mut() {
+            let nidx = (*npos - position) as usize;
+
+            if depth == 0 {
+                w.position = *npos;
+                w.value = cmxs[nidx].unwrap();
+            }
+
+            if nidx.is_multiple_of(2) {
+                if nidx + 1 < cmxs.len() {
+                    assert!(
+                        cmxs[nidx + 1].is_some(),
+                        "{} {} {}",
+                        depth,
+                        w.position,
+                        nidx
+                    );
+                    w.ommers.0[depth] = cmxs[nidx + 1];
+                } else {
+                    w.ommers.0[depth] = None;
+                }
+            } else {
+                assert!(
+                    cmxs[nidx - 1].is_some(),
+                    "{} {} {}",
+                    depth,
+                    w.position,
+                    nidx
+                );
+                w.ommers.0[depth] = cmxs[nidx - 1];
+            }
+        }
+
+        let len = cmxs.len();
+        if len >= 2 {
+            for (_u32, _n, w) in old_notes.iter_mut() {
+                if w.ommers.0[depth].is_none() {
+                    assert!(cmxs[1].is_some());
+                    w.ommers.0[depth] = cmxs[1];
+                }
+            }
+        }
+
+        if len % 2 == 1 {
+            edge.0[depth] = cmxs[len - 1];
+        } else {
+            edge.0[depth] = None;
+        }
+
+        let pairs = len / 2;
+        let mut cmxs2 = hasher.parallel_combine_opt(depth as u8, &cmxs, pairs);
+        std::mem::swap(&mut cmxs, &mut cmxs2);
+    }
+
+    tracing::info!("height: {end}, position: {}", edge.size());
     store_election_height(&mut db_tx, end).await?;
-    let cmx_tree_bytes = frontier_to_bytes(&cmx_tree)?;
-    store_election_frontier(&mut db_tx, &cmx_tree_bytes).await?;
+    store_election_frontier(&mut db_tx, &edge).await?;
     db_tx.commit().await?;
     Ok(())
 }
@@ -208,4 +263,3 @@ pub async fn decode_ballots(
 
     Ok(())
 }
-

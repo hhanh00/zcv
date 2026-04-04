@@ -42,7 +42,7 @@ pub async fn client_delete_election_data(context: &Context, new_account: Option<
     Ok(())
 }
 
-pub async fn scan_ballots(id_accounts: Vec<u32>, context: &Context) -> Result<()> {
+pub async fn scan_ballots(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
@@ -55,7 +55,7 @@ pub async fn scan_ballots(id_accounts: Vec<u32>, context: &Context) -> Result<()
         &Network::MainNetwork,
         &mut conn,
         &mut client,
-        &id_accounts,
+        id_account,
         start,
         end,
     )

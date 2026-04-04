@@ -1,7 +1,8 @@
-[patch.crates-io.orchard]
+#[patch."https://github.com/hhanh00/zkool2"]
+#zcash-trees = { path = "/Users/hanhhuynhhuu/projects/zkool/zcash-trees" }
+
+#[patch.crates-io.orchard]
 #path = "./orchard"
-git = "https://github.com/hhanh00/orchard.git"
-rev = "c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124"
 
 [workspace]
 exclude = ["orchard"]
@@ -58,7 +59,7 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 
 [workspace.dependencies.zcash-trees]
 git = "https://github.com/hhanh00/zkool2"
-rev = "054433c8aa0fcd15b55f363a55c03d803b89503a"
+rev = "fb17c0833583b74695345b82e60c549c51d3db33"
 features = ["imt"]
 
 [workspace.dependencies.pir-client]
@@ -70,8 +71,9 @@ features = ["serde"]
 version = "0.4"
 
 [workspace.dependencies.orchard]
+git = "https://github.com/hhanh00/orchard.git"
+rev = "c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124"
 features = ["vote"]
-version = "0.11"
 
 [workspace.dependencies.serde]
 features = ["derive"]
