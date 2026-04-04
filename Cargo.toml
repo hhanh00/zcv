@@ -1,5 +1,5 @@
-[patch."https://github.com/hhanh00/zkool2"]
-zcash-trees = { path = "/Users/hanhhuynhhuu/projects/zkool/zcash-trees" }
+# [patch."https://github.com/hhanh00/zkool2"]
+# zcash-trees = { path = "/Users/hanhhuynhhuu/projects/zkool/zcash-trees" }
 
 [patch.crates-io.orchard]
 #path = "./orchard"
