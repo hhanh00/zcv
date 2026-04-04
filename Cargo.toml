@@ -6,7 +6,7 @@
 
 [workspace]
 exclude = ["orchard"]
-members = ["zcvlib", "setup"]
+members = ["zcvlib"]
 resolver = "2"
 
 [workspace.dependencies]
