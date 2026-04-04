@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use sqlx::{
     Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query,
 };
-use zcash_trees::warp::{Edge, Hasher, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
+use zcash_trees::warp::{Edge, Hasher, hasher::OrchardHasher};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     net::{Ipv4Addr, SocketAddrV4},
@@ -490,9 +490,7 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
 
 fn read_roots(nf_root: &[u8], cmx_tree: &[u8]) -> ZCVResult<(MerkleHashOrchard, Edge)> {
     let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
-    let orchard_hasher = OrchardHasher::default();
-    let cmx_tree = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
-    let cmx_tree = cmx_tree.to_edge(&orchard_hasher);
+    let cmx_tree = Edge::read(cmx_tree).anyhow()?;
     Ok((nf_root, cmx_tree))
 }
 

@@ -23,14 +23,14 @@ use orchard::{
 };
 use pasta_curves::Fp;
 use pir_client::PirClient;
-use sqlx::{Acquire, SqliteConnection, query};
+use sqlx::{Acquire, SqliteConnection, query, query_as};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
 };
 use tracing::info;
 use zcash_protocol::consensus::Network;
-use zcash_trees::warp::{Edge, Hasher, Witness, hasher::OrchardHasher};
+use zcash_trees::warp::{Edge, Hasher, Witness, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 
 pub type Client = CompactTxStreamerClient<Channel>;
 pub type VoteClient = VoteStreamerClient<Channel>;
@@ -41,7 +41,7 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
-pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+pub async fn fetch_initial_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
     let mut lwd_client = connect(lwd_url).await?;
     let tree_state = lwd_client
         .get_tree_state(Request::new(BlockId {
@@ -51,18 +51,38 @@ pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(V
         .await?
         .into_inner();
     let orchard_tree_state = hex::decode(tree_state.orchard_tree).anyhow()?;
+    let hasher = OrchardHasher::default();
+    let orchard_tree_state = {
+        let frontier = CommitmentTreeFrontier::read(&*orchard_tree_state).anyhow()?;
+        let edge = frontier.to_edge(&hasher);
+        let mut buf = vec![];
+        edge.write(&mut buf).anyhow()?;
+        buf
+    };
     let client = pir_client::PirClient::connect(pir_url).await?;
     let nf_root = client.root29().to_repr().to_vec();
 
     Ok((nf_root, orchard_tree_state))
 }
 
+pub async fn fetch_roots(conn: &mut SqliteConnection) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+    let (nf_root,): (Vec<u8>,) =
+        query_as("SELECT nf_root FROM v_elections WHERE id_election = 0")
+            .fetch_one(&mut *conn)
+            .await?;
+    let (cmx_tree,): (Vec<u8>,) =
+        query_as("SELECT frontier FROM v_state WHERE id = 0")
+            .fetch_one(&mut *conn)
+            .await?;
+    Ok((nf_root, cmx_tree))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn scan_ballots(
     network: &Network,
     conn: &mut SqliteConnection,
     client: &mut VoteClient,
     pir_client: &PirClient,
-    domain: Fp,
     id_account: u32,
     start: u32,
     end: u32,
@@ -232,7 +252,7 @@ pub async fn scan_ballots(
     // Batch-fetch PIR proofs for all note nullifiers (old and new)
     let mut nullifiers: Vec<Fp> = vec![];
     for (_, n, _) in all_notes.iter() {
-        nullifiers.push(Fp::from_repr(n.nullifier_domain(&fvk, domain).to_bytes()).unwrap());
+        nullifiers.push(Fp::from_repr(n.nullifier(&fvk).to_bytes()).unwrap());
     }
     let nf_proofs = pir_client.fetch_proofs(&nullifiers).await?;
     let mut nf_proof_bytes: Vec<Vec<u8>> = vec![];

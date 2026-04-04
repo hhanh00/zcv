@@ -17,7 +17,7 @@ use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zcash_trees::warp::Witness;
-use zcash_trees::warp::{Edge, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
+use zcash_trees::warp::Edge;
 use zip32::{AccountId, Scope};
 
 use crate::{
@@ -311,10 +311,7 @@ pub async fn store_election(
     .context("store_election")?;
 
     if !cmx_tree.is_empty() {
-        // create frontier from edge of cmx_tree
-        let cmx_frontier = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
-        let hasher = OrchardHasher::default();
-        let edge = cmx_frontier.to_edge(&hasher);
+        let edge = Edge::read(cmx_tree).anyhow()?;
         let mut frontier = vec![];
         edge.write(&mut frontier).anyhow()?;
 
