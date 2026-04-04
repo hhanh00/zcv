@@ -15,9 +15,8 @@ use rand_core::OsRng;
 use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 use zcash_protocol::consensus::Network;
 use zcash_trees::warp::{
-    AuthPath, FragmentAuthPath, Witness,
+    AuthPath, Edge, FragmentAuthPath, Witness,
     hasher::{OrchardHasher, empty_roots},
-    legacy::CommitmentTreeFrontier,
 };
 
 use crate::{
@@ -34,22 +33,17 @@ use crate::{
 pub async fn vote(
     network: &Network,
     conn: &mut SqliteConnection,
-    lwd_url: &str,
-    pir_url: &str,
     id_account: u32,
     memo: &[u8],
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, address) = get_domain(conn).await?;
-    send_vote(network, conn, lwd_url, pir_url, id_account, domain, &address, memo, amount).await
+    send_vote(network, conn, id_account, domain, &address, memo, amount).await
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn send_vote(
     network: &Network,
     conn: &mut SqliteConnection,
-    lwd_url: &str,
-    pir_url: &str,
     id_account: u32,
     domain: Fp,
     address: &str,
@@ -82,15 +76,14 @@ pub async fn send_vote(
 
     tracing::info!("fetch_roots");
     // Fetch the stored nf_root and CMX commitment tree frontier from the DB.
-    let (nf_root_bytes, cmx_tree_bytes) = fetch_roots(lwd_url, pir_url, e.end).await?;
+    let (nf_root_bytes, cmx_tree_bytes) = fetch_roots(conn).await?;
     let nf_root = Fp::from_repr(tiu!(nf_root_bytes)).unwrap();
 
     tracing::info!("cmx_frontier");
     // Build the CMX edge (FragmentAuthPath) used to complete witnesses.
-    let cmx_frontier = CommitmentTreeFrontier::read(&*cmx_tree_bytes).anyhow()?;
     let hasher = OrchardHasher::default();
     let er = empty_roots(&hasher);
-    let cmx_edge = cmx_frontier.to_edge(&hasher);
+    let cmx_edge = Edge::read(&*cmx_tree_bytes).anyhow()?;
     let edge = cmx_edge.to_auth_path(&hasher);
     let cmx_root = Fp::from_repr(cmx_edge.root(&hasher)).unwrap();
 
@@ -117,6 +110,8 @@ pub async fn send_vote(
     }
 
     tracing::info!("vote_with_nf_exclusion");
+    tracing::info!("nf root = {:?}", &nf_root);
+    tracing::info!("cmx root = {:?}", &cmx_root);
     let (ballot, _) = vote_with_nf_exclusion(
         domain,
         e.need_sig,
@@ -229,25 +224,12 @@ pub async fn mint(
 pub async fn delegate(
     network: &Network,
     conn: &mut SqliteConnection,
-    lwd_url: &str,
-    pir_url: &str,
     id_account: u32,
     address: &str,
     amount: u64,
 ) -> ZCVResult<Ballot> {
     let (domain, _) = get_domain(conn).await?;
-    send_vote(
-        network,
-        conn,
-        lwd_url,
-        pir_url,
-        id_account,
-        domain,
-        address,
-        &[],
-        amount,
-    )
-    .await
+    send_vote(network, conn, id_account, domain, address, &[], amount).await
 }
 
 fn dummy_witnesses() -> BallotWitnesses {

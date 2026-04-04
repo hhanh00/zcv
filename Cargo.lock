@@ -2914,15 +2914,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redact"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcecefd225c2fb69914585a7a6f8878929feb316a7ecb61c07d79e361d46d8ac"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "reddsa"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5103,7 +5094,7 @@ dependencies = [
 [[package]]
 name = "zcash-trees"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/zkool2?rev=fb17c0833583b74695345b82e60c549c51d3db33#fb17c0833583b74695345b82e60c549c51d3db33"
+source = "git+https://github.com/hhanh00/zkool2?rev=97ba893f61c422c7f8032ab341f6473eab94ae20#97ba893f61c422c7f8032ab341f6473eab94ae20"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5223,26 +5214,6 @@ dependencies = [
  "zcash_script",
  "zcash_spec",
  "zip32",
-]
-
-[[package]]
-name = "zcv-setup"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "clap",
- "figment",
- "prost 0.14.1",
- "redact",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tonic",
- "tonic-prost-build",
- "tracing",
- "tracing-subscriber",
- "warp",
 ]
 
 [[package]]
