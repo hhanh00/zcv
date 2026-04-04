@@ -17,7 +17,7 @@ use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zcash_trees::warp::Witness;
-use zcash_trees::warp::{Edge, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
+use zcash_trees::warp::Edge;
 use zip32::{AccountId, Scope};
 
 use crate::{
@@ -311,10 +311,7 @@ pub async fn store_election(
     .context("store_election")?;
 
     if !cmx_tree.is_empty() {
-        // create frontier from edge of cmx_tree
-        let cmx_frontier = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
-        let hasher = OrchardHasher::default();
-        let edge = cmx_frontier.to_edge(&hasher);
+        let edge = Edge::read(cmx_tree).anyhow()?;
         let mut frontier = vec![];
         edge.write(&mut frontier).anyhow()?;
 
@@ -634,13 +631,17 @@ pub async fn list_election_witnesses(
 pub async fn store_election_witness(
     conn: &mut SqliteConnection,
     id_note: Option<u32>,
+    nf_witness: &[u8],
     cmx_witness: &[u8],
 ) -> ZCVResult<()> {
     query(
-        "INSERT INTO v_witnesses(id_note, nf, cmx) VALUES (?1, X'', ?2)
-        ON CONFLICT(id_note) DO UPDATE SET cmx = excluded.cmx",
+        "INSERT INTO v_witnesses(id_note, nf, cmx) VALUES (?1, ?2, ?3)
+        ON CONFLICT(id_note) DO UPDATE SET
+        nf = excluded.nf,
+        cmx = excluded.cmx",
     )
     .bind(id_note)
+    .bind(nf_witness)
     .bind(cmx_witness)
     .execute(conn)
     .await?;

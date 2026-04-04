@@ -9,6 +9,7 @@ use crate::{
         store_election_witness, store_received_note, store_result,
     },
     error::IntoAnyhow,
+    pod::ImtProofDataBin,
     rpc::{BlockId, compact_tx_streamer_client::CompactTxStreamerClient},
     tiu,
     vote_rpc::{VoteRange, vote_streamer_client::VoteStreamerClient},
@@ -16,18 +17,20 @@ use crate::{
 use bincode::config::legacy;
 use ff::PrimeField;
 use orchard::{
+    Note,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
     vote::try_decrypt_ballot,
 };
 use pasta_curves::Fp;
-use sqlx::{Acquire, SqliteConnection, query};
+use pir_client::PirClient;
+use sqlx::{Acquire, SqliteConnection, query, query_as};
 use tonic::{
     Request,
     transport::{Channel, Endpoint},
 };
 use tracing::info;
 use zcash_protocol::consensus::Network;
-use zcash_trees::warp::{Edge, Hasher, Witness, hasher::OrchardHasher};
+use zcash_trees::warp::{Edge, Hasher, Witness, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 
 pub type Client = CompactTxStreamerClient<Channel>;
 pub type VoteClient = VoteStreamerClient<Channel>;
@@ -38,7 +41,7 @@ pub async fn connect(url: &str) -> ZCVResult<Client> {
     Ok(client)
 }
 
-pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+pub async fn fetch_initial_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
     let mut lwd_client = connect(lwd_url).await?;
     let tree_state = lwd_client
         .get_tree_state(Request::new(BlockId {
@@ -48,16 +51,38 @@ pub async fn fetch_roots(lwd_url: &str, pir_url: &str, end: u32) -> ZCVResult<(V
         .await?
         .into_inner();
     let orchard_tree_state = hex::decode(tree_state.orchard_tree).anyhow()?;
+    let hasher = OrchardHasher::default();
+    let orchard_tree_state = {
+        let frontier = CommitmentTreeFrontier::read(&*orchard_tree_state).anyhow()?;
+        let edge = frontier.to_edge(&hasher);
+        let mut buf = vec![];
+        edge.write(&mut buf).anyhow()?;
+        buf
+    };
     let client = pir_client::PirClient::connect(pir_url).await?;
     let nf_root = client.root29().to_repr().to_vec();
 
     Ok((nf_root, orchard_tree_state))
 }
 
+pub async fn fetch_roots(conn: &mut SqliteConnection) -> ZCVResult<(Vec<u8>, Vec<u8>)> {
+    let (nf_root,): (Vec<u8>,) =
+        query_as("SELECT nf_root FROM v_elections WHERE id_election = 0")
+            .fetch_one(&mut *conn)
+            .await?;
+    let (cmx_tree,): (Vec<u8>,) =
+        query_as("SELECT frontier FROM v_state WHERE id = 0")
+            .fetch_one(&mut *conn)
+            .await?;
+    Ok((nf_root, cmx_tree))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn scan_ballots(
     network: &Network,
     conn: &mut SqliteConnection,
     client: &mut VoteClient,
+    pir_client: &PirClient,
     id_account: u32,
     start: u32,
     end: u32,
@@ -138,7 +163,9 @@ pub async fn scan_ballots(
                     )
                     .await?;
 
-                    new_notes.push((position, note, Witness::default()));
+                    let mut w = Witness::default();
+                    w.position = position;
+                    new_notes.push((None, note, w));
 
                     // track new note nullifier
                     let nf = note.nullifier_domain(fvk, domain).to_bytes();
@@ -149,7 +176,8 @@ pub async fn scan_ballots(
         }
     }
 
-    let mut old_notes = list_election_witnesses(&mut db_tx, &fvk, start).await?;
+    let mut old_notes: Vec<(Option<u32>, Note, Witness)> = list_election_witnesses(&mut db_tx, &fvk, start).await?
+        .into_iter().map(|(id, n, w)| (Some(id), n, w)).collect();
 
     for depth in 0..zcash_trees::warp::MERKLE_DEPTH as usize {
         let mut position = initial_position >> depth;
@@ -158,12 +186,11 @@ pub async fn scan_ballots(
             position -= 1;
         }
 
-        for (npos, _n, w) in new_notes.iter_mut() {
-            let note_pos = *npos >> depth;
+        for (_, _n, w) in new_notes.iter_mut() {
+            let note_pos = w.position >> depth;
             let nidx = (note_pos - position) as usize;
 
             if depth == 0 {
-                w.position = *npos;
                 w.value = cmxs[nidx].unwrap();
             }
 
@@ -215,13 +242,30 @@ pub async fn scan_ballots(
 
     tracing::info!("root = {}", hex::encode(edge.root(&hasher)));
     let edge_auth_path = edge.to_auth_path(&hasher);
+
+    // Collect all (id_note, note, witness) in a single vec for reuse
+    let mut all_notes: Vec<(Option<u32>, &Note, &Witness)> = vec![];
+    for (id, n, w) in old_notes.iter().chain(new_notes.iter()) {
+        all_notes.push((*id, n, w));
+    }
+
+    // Batch-fetch PIR proofs for all note nullifiers (old and new)
+    let mut nullifiers: Vec<Fp> = vec![];
+    for (_, n, _) in all_notes.iter() {
+        nullifiers.push(Fp::from_repr(n.nullifier(&fvk).to_bytes()).unwrap());
+    }
+    let nf_proofs = pir_client.fetch_proofs(&nullifiers).await?;
+    let mut nf_proof_bytes: Vec<Vec<u8>> = vec![];
+    for p in nf_proofs {
+        let bin: ImtProofDataBin = p.into();
+        nf_proof_bytes.push(bincode::encode_to_vec(&bin, legacy()).anyhow()?);
+    }
+
     // store updated witnesses (old and new)
-    for (id_note, w) in old_notes.iter().map(|(id, _, w)| (Some(*id), w))
-        .chain(new_notes.iter().map(|(_, _, w)| (None, w)))
-    {
+    for (i, (id_note, _, w)) in all_notes.iter().enumerate() {
         tracing::info!("w root = {}", hex::encode(w.root(&edge_auth_path.0, &hasher)));
-        let w_bytes = bincode::encode_to_vec(w, legacy()).anyhow()?;
-        store_election_witness(&mut db_tx, id_note, &w_bytes).await?;
+        let w_bytes = bincode::encode_to_vec(*w, legacy()).anyhow()?;
+        store_election_witness(&mut db_tx, *id_note, &nf_proof_bytes[i], &w_bytes).await?;
     }
 
     tracing::info!("height: {end}, position: {}", edge.size());
