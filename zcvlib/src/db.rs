@@ -5,15 +5,18 @@ use bech32::{Bech32m, Hrp};
 use bip39::Mnemonic;
 use ff::PrimeField;
 use futures::StreamExt;
+use bincode::config::legacy;
 use orchard::{
     Note,
-    keys::{FullViewingKey, IncomingViewingKey, SpendingKey},
+    keys::{Diversifier, FullViewingKey, IncomingViewingKey, SpendingKey},
+    note::{RandomSeed, Rho},
+    value::NoteValue,
     vote::{Ballot, BallotData, BallotWitnesses},
 };
-use orchard::tree::MerkleHashOrchard;
+use zcash_trees::warp::Witness;
 use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
-use zcash_trees::warp::legacy::CommitmentTreeFrontier;
+use zcash_trees::warp::Edge;
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -446,10 +449,12 @@ pub async fn get_election_height(conn: &mut SqliteConnection) -> ZCVResult<u32> 
 
 pub async fn store_election_frontier(
     conn: &mut SqliteConnection,
-    frontier: &[u8],
+    edge: &Edge,
 ) -> ZCVResult<()> {
+    let mut bytes = vec![];
+    edge.write(&mut bytes).anyhow()?;
     query("UPDATE v_state SET frontier = ?1 WHERE id = 0")
-        .bind(frontier)
+        .bind(bytes.as_slice())
         .execute(conn)
         .await?;
     Ok(())
@@ -464,15 +469,6 @@ pub async fn get_election_frontier(conn: &mut SqliteConnection) -> ZCVResult<Vec
     Ok(frontier)
 }
 
-pub fn frontier_to_bytes(
-    frontier: &incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
-) -> ZCVResult<Vec<u8>> {
-    let mut out = vec![];
-    CommitmentTreeFrontier::from_orchard_frontier(frontier)
-        .write(&mut out)
-        .anyhow()?;
-    Ok(out)
-}
 
 pub async fn list_unspent_nullifiers(
     conn: &mut SqliteConnection,
@@ -583,6 +579,69 @@ pub async fn store_received_note(
     .execute(conn)
     .await?;
 
+    Ok(())
+}
+
+pub(crate) fn note_from_parts(
+    fvk: &FullViewingKey,
+    scope: u32,
+    diversifier: Vec<u8>,
+    rho: Vec<u8>,
+    rseed: Vec<u8>,
+    value: u64,
+) -> Note {
+    let oscope = if scope == 0 { Scope::External } else { Scope::Internal };
+    let diversifier = Diversifier::from_bytes(tiu!(diversifier));
+    let recipient = fvk.address(diversifier, oscope);
+    let rho = Rho::from_bytes(&tiu!(rho)).unwrap();
+    let rseed = RandomSeed::from_bytes(tiu!(rseed), &rho).unwrap();
+    Note::from_parts(recipient, NoteValue::from_raw(value), rho, rseed).unwrap()
+}
+
+pub async fn list_election_witnesses(
+    conn: &mut SqliteConnection,
+    fvk: &FullViewingKey,
+    height: u32,
+) -> ZCVResult<Vec<(u32, Note, Witness)>> {
+    let result = query(
+        "SELECT n.position, n.scope, n.diversifier, n.rho, n.rseed, n.value, w.cmx
+        FROM v_notes n
+        JOIN v_witnesses w ON n.id_note = w.id_note
+        WHERE n.height = ?1",
+    )
+    .bind(height)
+    .map(|r: SqliteRow| {
+        let position: u32 = r.get(0);
+        let scope: u32 = r.get(1);
+        let diversifier: Vec<u8> = r.get(2);
+        let rho: Vec<u8> = r.get(3);
+        let rseed: Vec<u8> = r.get(4);
+        let value: i64 = r.get(5);
+        let cmx: Vec<u8> = r.get(6);
+
+        let note = note_from_parts(fvk, scope, diversifier, rho, rseed, value as u64);
+
+        let (witness, _) = bincode::decode_from_slice::<Witness, _>(&cmx, legacy()).unwrap();
+
+        (position, note, witness)
+    })
+    .fetch_all(conn)
+    .await?;
+
+    Ok(result)
+}
+
+
+pub async fn store_election_witness(
+    conn: &mut SqliteConnection,
+    id_note: u32,
+    cmx_witness: &[u8],
+) -> ZCVResult<()> {
+    query("UPDATE v_witnesses SET cmx = ?2 WHERE id_note = ?1")
+        .bind(id_note)
+        .bind(cmx_witness)
+        .execute(conn)
+        .await?;
     Ok(())
 }
 

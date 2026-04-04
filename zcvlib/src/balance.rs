@@ -1,12 +1,6 @@
 use anyhow::Context;
 use bincode::config::legacy;
 use ff::PrimeField;
-use orchard::{
-    Note,
-    keys::{Diversifier, Scope},
-    note::{RandomSeed, Rho},
-    value::NoteValue,
-};
 use pasta_curves::Fp;
 use pir_client::PirClient;
 use sqlx::{Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
@@ -16,12 +10,11 @@ use zcash_trees::warp::{Witness, hasher::OrchardHasher, legacy::CommitmentTreeFr
 
 use crate::{
     ZCVResult,
-    db::{get_ivks, store_received_note},
+    db::{get_ivks, note_from_parts, store_received_note},
     error::IntoAnyhow,
     lwd::Client,
     pod::{ImtProofDataBin, UTXO},
     rpc::BlockId,
-    tiu,
 };
 
 pub async fn import_account(
@@ -65,17 +58,7 @@ pub async fn import_account(
         let scope: u32 = r.get(5);
         let position: u32 = r.get(6);
         let height: u32 = r.get(7);
-        let oscope = if scope == 0 {
-            Scope::External
-        } else {
-            Scope::Internal
-        };
-        let diversifier = Diversifier::from_bytes(tiu!(diversifier));
-        let recipient = fvk.address(diversifier, oscope);
-        let value = NoteValue::from_raw(value);
-        let rho = Rho::from_bytes(&tiu!(rho)).unwrap();
-        let rseed = RandomSeed::from_bytes(tiu!(rcm), &rho).unwrap();
-        let note = Note::from_parts(recipient, value, rho, rseed).unwrap();
+        let note = note_from_parts(&fvk, scope, diversifier, rho, rcm, value);
         (id, note, position, scope, height)
     })
     .fetch_all(&mut *conn)

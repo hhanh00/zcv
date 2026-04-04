@@ -27,12 +27,8 @@ impl Mutation {
         Ok(hex::encode(&hash))
     }
 
-    async fn scan_ballots(id_accounts: Vec<i32>, context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(
-            id_accounts.into_iter().map(|a| a as u32).collect(),
-            &context.0,
-        )
-        .await?;
+    async fn scan_ballots(id_account: i32, context: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::scan_ballots(id_account as u32, &context.0).await?;
         Ok(true)
     }
 
