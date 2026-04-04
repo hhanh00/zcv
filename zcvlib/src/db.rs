@@ -16,7 +16,7 @@ use orchard::{
 use zcash_trees::warp::Witness;
 use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
-use zcash_trees::warp::Edge;
+use zcash_trees::warp::{Edge, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 use zcash_protocol::consensus::{Network, NetworkConstants};
 use zip32::{AccountId, Scope};
 
@@ -311,13 +311,17 @@ pub async fn store_election(
     .execute(&mut *conn)
     .await
     .context("store_election")?;
-    // Initialize height and frontier in v_state (skips scan until explicitly reset)
-    query("UPDATE v_state SET height = ?1 WHERE id = 0 AND height = 0")
+
+    // create frontier from edge of cmx_tree
+    let cmx_frontier = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
+    let hasher = OrchardHasher::default();
+    let edge = cmx_frontier.to_edge(&hasher);
+    let mut frontier = vec![];
+    edge.write(&mut frontier).anyhow()?;
+
+    query("UPDATE v_state SET height = ?1, frontier = ?2 WHERE id = 0")
         .bind(election.end)
-        .execute(&mut *conn)
-        .await?;
-    query("UPDATE v_state SET frontier = ?1 WHERE id = 0 AND LENGTH(frontier) = 0")
-        .bind(cmx_tree)
+        .bind(frontier.as_slice())
         .execute(&mut *conn)
         .await?;
     Ok(())
@@ -453,6 +457,7 @@ pub async fn store_election_frontier(
 ) -> ZCVResult<()> {
     let mut bytes = vec![];
     edge.write(&mut bytes).anyhow()?;
+    Edge::read(&*bytes).anyhow()?;
     query("UPDATE v_state SET frontier = ?1 WHERE id = 0")
         .bind(bytes.as_slice())
         .execute(conn)
@@ -604,14 +609,14 @@ pub async fn list_election_witnesses(
     height: u32,
 ) -> ZCVResult<Vec<(u32, Note, Witness)>> {
     let result = query(
-        "SELECT n.position, n.scope, n.diversifier, n.rho, n.rseed, n.value, w.cmx
+        "SELECT n.id_note, n.scope, n.diversifier, n.rho, n.rseed, n.value, w.cmx
         FROM v_notes n
         JOIN v_witnesses w ON n.id_note = w.id_note
         WHERE n.height = ?1",
     )
     .bind(height)
     .map(|r: SqliteRow| {
-        let position: u32 = r.get(0);
+        let id_note: u32 = r.get(0);
         let scope: u32 = r.get(1);
         let diversifier: Vec<u8> = r.get(2);
         let rho: Vec<u8> = r.get(3);
@@ -623,7 +628,7 @@ pub async fn list_election_witnesses(
 
         let (witness, _) = bincode::decode_from_slice::<Witness, _>(&cmx, legacy()).unwrap();
 
-        (position, note, witness)
+        (id_note, note, witness)
     })
     .fetch_all(conn)
     .await?;
@@ -634,14 +639,17 @@ pub async fn list_election_witnesses(
 
 pub async fn store_election_witness(
     conn: &mut SqliteConnection,
-    id_note: u32,
+    id_note: Option<u32>,
     cmx_witness: &[u8],
 ) -> ZCVResult<()> {
-    query("UPDATE v_witnesses SET cmx = ?2 WHERE id_note = ?1")
-        .bind(id_note)
-        .bind(cmx_witness)
-        .execute(conn)
-        .await?;
+    query(
+        "INSERT INTO v_witnesses(id_note, nf, cmx) VALUES (?1, X'', ?2)
+        ON CONFLICT(id_note) DO UPDATE SET cmx = excluded.cmx",
+    )
+    .bind(id_note)
+    .bind(cmx_witness)
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
