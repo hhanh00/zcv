@@ -2,7 +2,7 @@ use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
     db::{
-        check_cmx_root, frontier_to_bytes, store_ballot,
+        check_cmx_root, store_ballot,
         store_cmx_root, store_election, store_election_frontier, store_election_height,
     },
     error::IntoAnyhow,
@@ -15,7 +15,6 @@ use anyhow::anyhow;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use blake2b_simd::Params;
 use ff::PrimeField;
-use incrementalmerkletree::{Hashable, frontier::Frontier};
 use orchard::tree::MerkleHashOrchard;
 use pasta_curves::Fp;
 use prost::{Message, bytes::Bytes};
@@ -23,7 +22,7 @@ use serde_json::{Value, json};
 use sqlx::{
     Acquire, Sqlite, SqliteConnection, SqlitePool, Transaction, query,
 };
-use zcash_trees::warp::legacy::CommitmentTreeFrontier;
+use zcash_trees::warp::{Edge, Hasher, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
     net::{Ipv4Addr, SocketAddrV4},
@@ -75,7 +74,7 @@ pub struct ServerState {
     pub check_witnesses_cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
     pub domain: Fp,
     pub nf_root: MerkleHashOrchard,
-    pub cmx_tree: Frontier<MerkleHashOrchard, 32>,
+    pub cmx_tree: Edge,
 
     pub db_tx: Option<Transaction<'static, Sqlite>>,
     pub apphash: [u8; 32],
@@ -88,6 +87,7 @@ impl ServerState {
         pir_url: &str,
         skip_validation: bool,
     ) -> ZCVResult<Self> {
+        let hasher = OrchardHasher::default();
         Ok(Self {
             pool,
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
@@ -97,8 +97,8 @@ impl ServerState {
             locked: false,
             election: None,
             domain: Fp::zero(),
-            nf_root: MerkleHashOrchard::empty_leaf(),
-            cmx_tree: Frontier::empty(),
+            nf_root: MerkleHashOrchard::from_bytes(&hasher.empty()).unwrap(),
+            cmx_tree: Edge::default(),
             db_tx: None,
             apphash: [0u8; 32],
         })
@@ -318,6 +318,7 @@ impl Application for Server {
         let (app_hash, tx_results, validator_updates) = rt
             .block_on(async move {
                 let mut state = self.state.lock().await;
+                let orchard_hasher = OrchardHasher::default();
                 let mut validator_updates = vec![];
                 let mut db_tx = state.pool.begin().await?;
                 let apphash = &state.apphash;
@@ -351,13 +352,13 @@ impl Application for Server {
                                         read_roots(&nf_root, &cmx_tree_state)?;
                                     store_election(&mut db_tx, &election, &nf_root.to_bytes(), &cmx_tree_state).await?;
 
-                                    let cmx_root = cmx_tree.root();
+                                    let cmx_root = cmx_tree.root(&orchard_hasher);
                                     tracing::info!(
                                         "CMX ROOT: {}",
-                                        hex::encode(cmx_root.to_bytes())
+                                        hex::encode(cmx_root)
                                     );
 
-                                    store_cmx_root(&mut db_tx, &cmx_root.to_bytes(), election.end)
+                                    store_cmx_root(&mut db_tx, &cmx_root, election.end)
                                         .await?;
                                     let domain =
                                         Fp::from_repr(tiu!(election.domain.clone())).unwrap();
@@ -382,7 +383,7 @@ impl Application for Server {
                                     );
                                     tracing::info!(
                                         "Expected CMX ROOT: {}",
-                                        hex::encode(state.cmx_tree.root().to_bytes())
+                                        hex::encode(state.cmx_tree.root(&orchard_hasher))
                                     );
                                     ServerState::check_witnesses(
                                         &mut db_tx,
@@ -396,7 +397,7 @@ impl Application for Server {
                                     .await?;
                                     for a in ballot.data.actions.iter() {
                                         let cmx = MerkleHashOrchard::from_bytes(&a.cmx).unwrap();
-                                        state.cmx_tree.append(cmx);
+                                        state.cmx_tree.append(&orchard_hasher, cmx.to_bytes());
                                     }
                                     // This will catch and fail on a double spend because of the UNIQUE dnf
                                     let id_ballot =
@@ -447,9 +448,8 @@ impl Application for Server {
                     tiu!(hasher.finalize().as_bytes())
                 };
                 let height = height as u32;
-                store_cmx_root(&mut db_tx, &state.cmx_tree.root().to_bytes(), height).await?;
-                let cmx_tree_bytes = frontier_to_bytes(&state.cmx_tree)?;
-                store_election_frontier(&mut db_tx, &cmx_tree_bytes).await?;
+                store_cmx_root(&mut db_tx, &state.cmx_tree.root(&orchard_hasher), height).await?;
+                store_election_frontier(&mut db_tx, &state.cmx_tree).await?;
 
                 state.clear_check_witnesses();
                 state.db_tx = Some(db_tx);
@@ -488,16 +488,11 @@ pub async fn check_dup_nf(conn: &mut SqliteConnection, nf: &[u8]) -> ZCVResult<b
     Ok(exists)
 }
 
-fn read_roots(
-    nf_root: &[u8],
-    cmx_tree: &[u8],
-) -> ZCVResult<(
-    MerkleHashOrchard,
-    incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, 32>,
-)> {
+fn read_roots(nf_root: &[u8], cmx_tree: &[u8]) -> ZCVResult<(MerkleHashOrchard, Edge)> {
     let nf_root = MerkleHashOrchard::from_bytes(&tiu!(nf_root)).unwrap();
+    let orchard_hasher = OrchardHasher::default();
     let cmx_tree = CommitmentTreeFrontier::read(cmx_tree).anyhow()?;
-    let cmx_tree = cmx_tree.to_orchard_frontier();
+    let cmx_tree = cmx_tree.to_edge(&orchard_hasher);
     Ok((nf_root, cmx_tree))
 }
 

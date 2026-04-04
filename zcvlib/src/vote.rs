@@ -90,9 +90,9 @@ pub async fn send_vote(
     let cmx_frontier = CommitmentTreeFrontier::read(&*cmx_tree_bytes).anyhow()?;
     let hasher = OrchardHasher::default();
     let er = empty_roots(&hasher);
-    let edge = cmx_frontier.to_edge(&hasher).to_auth_path(&hasher);
-    let cmx_frontier = cmx_frontier.to_orchard_frontier();
-    let cmx_root = cmx_frontier.root();
+    let cmx_edge = cmx_frontier.to_edge(&hasher);
+    let edge = cmx_edge.to_auth_path(&hasher);
+    let cmx_root = Fp::from_repr(cmx_edge.root(&hasher)).unwrap();
 
     tracing::info!("note_ids");
     // Fetch the id_note for each unspent note (same filter as list_unspent_notes).
@@ -127,7 +127,7 @@ pub async fn send_vote(
         memo,
         &notes_with_witnesses,
         nf_root,
-        cmx_root.inner(),
+        cmx_root,
         OsRng,
         |message, _, _| {
             tracing::info!("{}", message);

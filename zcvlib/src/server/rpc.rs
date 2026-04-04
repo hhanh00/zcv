@@ -31,12 +31,11 @@ impl VoteStreamer for ZCVServer {
         let res = async move {
             let c = self.context.lock().await;
             let mut conn = c.connect().await?;
-            let (e, nf_root, cmx_tree_state) = fetch_election(&mut *conn).await?;
+            let (e, nf_root, cmx_tree_state) = fetch_election(&mut conn).await?;
             let election = Election {
                 election: serde_json::to_string(&e)?,
                 nf_root,
                 cmx_tree_state,
-                ..Default::default()
             };
             Ok::<_, anyhow::Error>(Response::new(election))
         };

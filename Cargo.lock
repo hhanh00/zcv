@@ -2382,6 +2382,41 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1ef66fcf99348242a20d582d7434da381a867df8dc155b3a980eca767c56137"
+dependencies = [
+ "aes",
+ "bitvec",
+ "blake2b_simd",
+ "core2",
+ "ff",
+ "fpe",
+ "getset",
+ "group",
+ "halo2_gadgets",
+ "halo2_poseidon",
+ "halo2_proofs",
+ "hex",
+ "incrementalmerkletree",
+ "lazy_static",
+ "memuse",
+ "nonempty",
+ "pasta_curves",
+ "rand 0.8.5",
+ "reddsa",
+ "serde",
+ "sinsemilla",
+ "subtle",
+ "tracing",
+ "visibility",
+ "zcash_note_encryption",
+ "zcash_spec",
+ "zip32",
+]
+
+[[package]]
+name = "orchard"
+version = "0.11.0"
 source = "git+https://github.com/hhanh00/orchard.git?rev=c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124#c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124"
 dependencies = [
  "aes",
@@ -5068,7 +5103,7 @@ dependencies = [
 [[package]]
 name = "zcash-trees"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/zkool2?rev=054433c8aa0fcd15b55f363a55c03d803b89503a#054433c8aa0fcd15b55f363a55c03d803b89503a"
+source = "git+https://github.com/hhanh00/zkool2?rev=fb17c0833583b74695345b82e60c549c51d3db33#fb17c0833583b74695345b82e60c549c51d3db33"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5079,7 +5114,7 @@ dependencies = [
  "hex",
  "incrementalmerkletree",
  "jubjub",
- "orchard",
+ "orchard 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rayon",
  "sapling-crypto",
  "secp256k1",
@@ -5230,11 +5265,10 @@ dependencies = [
  "futures",
  "hex",
  "hex-literal",
- "incrementalmerkletree",
  "juniper",
  "juniper_graphql_ws",
  "juniper_warp",
- "orchard",
+ "orchard 0.11.0 (git+https://github.com/hhanh00/orchard.git?rev=c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124)",
  "parking_lot",
  "pasta_curves",
  "pir-client",

@@ -6,7 +6,7 @@ use orchard::vote::BallotData;
 use pasta_curves::Fp;
 use rand_core::OsRng;
 use serde_json::{Value, json};
-use sqlx::{SqliteConnection, pool::PoolConnection, query_as};
+use sqlx::{SqliteConnection, pool::PoolConnection};
 use zcash_protocol::consensus::Network;
 
 use crate::{
