@@ -61,7 +61,7 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 
 [workspace.dependencies.zcash-trees]
 git = "https://github.com/hhanh00/zkool2"
-rev = "054433c8aa0fcd15b55f363a55c03d803b89503a"
+rev = "fb17c0833583b74695345b82e60c549c51d3db33"
 features = ["imt"]
 
 [workspace.dependencies.pir-client]
