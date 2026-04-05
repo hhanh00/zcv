@@ -346,7 +346,7 @@ impl Application for Server {
                                     tracing::info!("NF ROOT: {}", hex::encode(&nf_root));
                                     let (nf_root, cmx_tree) =
                                         read_roots(&nf_root, &cmx_tree_state)?;
-                                    store_election(&mut db_tx, &election, &nf_root.to_bytes(), &cmx_tree_state).await?;
+                                    store_election(&mut db_tx, 0, "", &election, &nf_root.to_bytes(), &cmx_tree_state).await?;
 
                                     let cmx_root = cmx_tree.root(&orchard_hasher);
                                     tracing::info!(

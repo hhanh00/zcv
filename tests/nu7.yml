@@ -1,4 +1,4 @@
-pir: "https://eth.taila9c148.ts.net"
+pir: "http://eth:3000"
 end: 3240000
 need_sig: true
 name: NU7 Sentiment Poll
