@@ -22,11 +22,6 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn store_election(election_json: String, ctx: &GQLContext) -> FieldResult<String> {
-        let hash = zcvlib::api::simple::store_election(election_json, &ctx.0).await?;
-        Ok(hex::encode(&hash))
-    }
-
     async fn scan_ballots(id_account: i32, context: &GQLContext) -> FieldResult<bool> {
         zcvlib::api::simple::scan_ballots(id_account as u32, &context.0).await?;
         Ok(true)
@@ -79,13 +74,10 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn import_election(ctx: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::import_election(&ctx.0).await?;
-        Ok(true)
-    }
-
-    async fn import_account(id_account: i32, ctx: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::import_account(id_account as u32, &ctx.0).await?;
+    async fn import_election(id_account: i32, url: String, ctx: &GQLContext) -> FieldResult<bool> {
+        let id_account = id_account as u32;
+        zcvlib::api::simple::import_election(id_account, &url, &ctx.0).await?;
+        zcvlib::api::simple::import_account(id_account, &ctx.0).await?;
         Ok(true)
     }
 }

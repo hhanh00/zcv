@@ -83,9 +83,11 @@ pub async fn import_account(
     // Find first witness height after the snapshot
     let (witness_height,): (u32,) = query_as(
         "SELECT DISTINCT height FROM witnesses
-        WHERE height >= ?1 ORDER BY height LIMIT 1",
+        WHERE height >= ?1 AND account = ?2
+        ORDER BY height LIMIT 1",
     )
     .bind(height)
+    .bind(account)
     .fetch_one(&mut *conn)
     .await
     .context("No witness data after snapshot height")?;
@@ -118,7 +120,7 @@ pub async fn import_account(
         })
         .fetch_one(&mut *conn)
         .await
-        .context("Cannot find witness")?;
+        .with_context(|| format!("Cannot find witness {account} {} {witness_height}", *id))?;
         let cmx_proof = witness.rewind(edge_position);
 
         let nf = note.nullifier(&fvk);
