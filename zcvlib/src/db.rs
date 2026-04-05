@@ -88,6 +88,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         id INTEGER PRIMARY KEY,
         version INTEGER,
         account INTEGER,
+        election_url TEXT,
+        pir_url TEXT,
         height INTEGER NOT NULL DEFAULT 0,
         frontier BLOB NOT NULL DEFAULT (X''))",
     )
@@ -112,7 +114,6 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "CREATE TABLE IF NOT EXISTS v_elections(
         id_election INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
-        start INTEGER NOT NULL,
         end INTEGER NOT NULL,
         need_sig BOOL NOT NULL,
         domain BLOB NOT NULL,
@@ -285,10 +286,9 @@ pub async fn store_election(
     let json = serde_json::to_string(election).anyhow()?;
     query(
         "INSERT INTO v_elections
-            (id_election, domain, start, end, need_sig, name, address, data, nf_root, cmx_tree)
-            VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
+            (id_election, domain, end, need_sig, name, address, data, nf_root, cmx_tree)
+            VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET
             domain = excluded.domain,
-            start = excluded.start,
             end = excluded.end,
             need_sig = excluded.need_sig,
             name = excluded.name,
@@ -298,7 +298,6 @@ pub async fn store_election(
             cmx_tree = excluded.cmx_tree",
     )
     .bind(election.domain.as_slice())
-    .bind(election.start)
     .bind(election.end)
     .bind(election.need_sig)
     .bind(&election.name)

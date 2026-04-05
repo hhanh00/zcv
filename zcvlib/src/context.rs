@@ -14,12 +14,11 @@ pub struct Context {
     // #[flutter_rust_bridge::frb(ignore)]
     pub pool: SqlitePool,
     pub lwd_url: String,
-    pub pir_url: String,
     pub election_url: String,
 }
 
 impl Context {
-    pub async fn new(db_path: &str, lwd_url: &str, pir_url: &str, election_url: &str) -> Result<Context> {
+    pub async fn new(db_path: &str, lwd_url: &str, election_url: &str) -> Result<Context> {
         let connect_options = SqliteConnectOptions::new()
             .create_if_missing(true)
             .busy_timeout(Duration::from_mins(1))
@@ -30,7 +29,6 @@ impl Context {
         Ok(Context {
             pool,
             lwd_url: lwd_url.to_string(),
-            pir_url: pir_url.to_string(),
             election_url: election_url.to_string(),
         })
     }
@@ -58,9 +56,9 @@ impl BFTContext {
         let _ = tracing::subscriber::set_global_default(subscriber);
     }
 
-    pub async fn new(db_path: &str, lwd_url: &str, pir_url: &str, comet_rpcport: u16, skip_validation: bool) -> ZCVResult<BFTContext> {
+    pub async fn new(db_path: &str, lwd_url: &str, comet_rpcport: u16, skip_validation: bool) -> ZCVResult<BFTContext> {
         Self::init_logger();
-        let context = Context::new(db_path, lwd_url, pir_url, "").await?;
+        let context = Context::new(db_path, lwd_url, "").await?;
         Ok(BFTContext {
             context,
             cometrpc_port: comet_rpcport,
