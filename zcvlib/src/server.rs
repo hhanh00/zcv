@@ -296,7 +296,6 @@ impl Application for Server {
                 status: ProposalStatus::Reject as i32,
             },
         };
-        tracing::info!("{status:?}");
         status
     }
 

@@ -41,7 +41,8 @@ pub async fn import_account(
         a.position,
         a.height
         FROM notes a
-        LEFT JOIN spends b ON a.id_note = b.id_note
+        LEFT JOIN spends b
+        ON a.id_note = b.id_note AND b.height < ?1
         WHERE b.id_note IS NULL
         AND a.height < ?1
         AND a.account = ?2
