@@ -23,10 +23,10 @@ pub fn compile_election_def(election_json: String, seed: String) -> Result<Strin
     Ok(res)
 }
 
-pub async fn store_election(election_json: String, context: &Context) -> Result<Vec<u8>> {
+pub async fn store_election(account: u32, url: String, election_json: String, context: &Context) -> Result<Vec<u8>> {
     let mut conn = context.connect().await?;
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
-    crate::db::store_election(&mut conn, &election, &[], &[]).await?;
+    crate::db::store_election(&mut conn, account, &url, &election, &[], &[]).await?;
     Ok(election.domain.clone())
 }
 
@@ -181,9 +181,10 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
     Ok(address)
 }
 
-pub async fn import_election(context: &Context) -> Result<(Vec<u8>, Vec<u8>)>
+pub async fn import_election(account: u32, url: &str, context: &Context) -> Result<(ElectionPropsPub, Vec<u8>, Vec<u8>)>
 {
-    let mut client = connect_to_vote_server(context).await?;
+    let ep = Endpoint::from_shared(url.to_string())?;
+    let mut client = VoteStreamerClient::connect(ep).await?;
     let election_json = client
         .get_election(Request::new(Empty {}))
         .await?
@@ -192,8 +193,8 @@ pub async fn import_election(context: &Context) -> Result<(Vec<u8>, Vec<u8>)>
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
     let (nf_root, cmx_tree) = crate::lwd::fetch_initial_roots(&context.lwd_url, &election.pir, election.end).await?;
     let mut conn = context.connect().await?;
-    crate::db::store_election(&mut conn, &election, &nf_root, &cmx_tree).await?;
-    Ok((nf_root, cmx_tree))
+    crate::db::store_election(&mut conn, account, url, &election, &nf_root, &cmx_tree).await?;
+    Ok((election, nf_root, cmx_tree))
 }
 
 pub async fn import_account(id_account: u32, context: &Context) -> Result<()> {

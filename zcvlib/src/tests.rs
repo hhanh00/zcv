@@ -87,6 +87,6 @@ pub async fn test_setup(conn: &mut SqliteConnection) -> Result<()> {
     let e = TEST_ELECTION;
     let e: ElectionProps = serde_json::from_value(e.clone()).unwrap();
     let e = e.build(TEST_ELECTION_SEED)?;
-    store_election(conn, &e, &[], &[]).await?;
+    store_election(conn, 0, "", &e, &[], &[]).await?;
     Ok(())
 }

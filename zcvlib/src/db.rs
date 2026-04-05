@@ -88,8 +88,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         id INTEGER PRIMARY KEY,
         version INTEGER,
         account INTEGER,
-        election_url TEXT,
-        pir_url TEXT,
+        url TEXT,
         height INTEGER NOT NULL DEFAULT 0,
         frontier BLOB NOT NULL DEFAULT (X''))",
     )
@@ -279,6 +278,8 @@ pub async fn get_account_address(
 
 pub async fn store_election(
     conn: &mut SqliteConnection,
+    account: u32,
+    url: &str,
     election: &ElectionPropsPub,
     nf_root: &[u8],
     cmx_tree: &[u8],
@@ -307,7 +308,14 @@ pub async fn store_election(
     .bind(cmx_tree)
     .execute(&mut *conn)
     .await
-    .context("store_election")?;
+    .context("store_election:election")?;
+
+    query("UPDATE v_state SET account = ?1, url = ?2 WHERE id = 0")
+    .bind(account)
+    .bind(url)
+    .execute(&mut *conn)
+    .await
+    .context("store_election:account")?;
 
     if !cmx_tree.is_empty() {
         let edge = Edge::read(cmx_tree).anyhow()?;
