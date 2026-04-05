@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.6.0...zcvlib-v0.7.0) (2026-04-05)
+
+
+### Features
+
+* add pir config option ([#184](https://github.com/hhanh00/zcv/issues/184)) ([fb1055d](https://github.com/hhanh00/zcv/commit/fb1055ddb40bed2de3fb8c19f4e723e978f1e2ef))
+* import notes from spending wallet to voting wallet ([#186](https://github.com/hhanh00/zcv/issues/186)) ([04ed765](https://github.com/hhanh00/zcv/commit/04ed7652a511609441eb5bf4662fd0b95653e345))
+* **pir:** get root & tree state from servers instead of downloading blocks ([#185](https://github.com/hhanh00/zcv/issues/185)) ([3245698](https://github.com/hhanh00/zcv/commit/32456982e0902a581d07cb9d1a6485d51a9e3940))
+* **pir:** start adding support for PIR server ([2d47221](https://github.com/hhanh00/zcv/commit/2d472216fe47f38b9a715d0db8566a3af1af9587))
+* remove start from election def ([#195](https://github.com/hhanh00/zcv/issues/195)) ([1e28e78](https://github.com/hhanh00/zcv/commit/1e28e784f5953737f2a76dd0b1cb22a17d83f577))
+* update cmx after scan ballots ([#189](https://github.com/hhanh00/zcv/issues/189)) ([69be738](https://github.com/hhanh00/zcv/commit/69be738b2f65af374b237bc15976894a34ce09d0))
+* vote with merkle proofs calculated externally (PIR) ([#187](https://github.com/hhanh00/zcv/issues/187)) ([d2b9ee2](https://github.com/hhanh00/zcv/commit/d2b9ee2a54fe2b9bdd1ed82ab5265bc94a1838bc))
+
+
+### Bug Fixes
+
+* add nf proof ([#193](https://github.com/hhanh00/zcv/issues/193)) ([8de8eea](https://github.com/hhanh00/zcv/commit/8de8eea138fb53774d8f8c154f7e78ca1591b24f))
+* cmx witness update after scan_ballots ([#190](https://github.com/hhanh00/zcv/issues/190)) ([7fc6b2d](https://github.com/hhanh00/zcv/commit/7fc6b2dc9ec066bbeb9e925da77070a60af3035e))
+* integration with zkool ([#197](https://github.com/hhanh00/zcv/issues/197)) ([43d8665](https://github.com/hhanh00/zcv/commit/43d86651a33db29ece305c6eddb7334262cef357))
+* notes spent after the snapshot should be usable ([#198](https://github.com/hhanh00/zcv/issues/198)) ([cc1de43](https://github.com/hhanh00/zcv/commit/cc1de43777c23bc2c67b81a27b0da056da5eefd9))
+* only use orchard notes for voting ([#188](https://github.com/hhanh00/zcv/issues/188)) ([1143321](https://github.com/hhanh00/zcv/commit/1143321aed8af06980d5e7f073a9fe1535072836))
+
 ## [0.6.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.5.2...zcvlib-v0.6.0) (2026-03-27)
 
 
