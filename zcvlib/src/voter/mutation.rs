@@ -84,8 +84,8 @@ impl Mutation {
         Ok(true)
     }
 
-    async fn import_account(account: i32, ctx: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::import_account(account as u32, &ctx.0).await?;
+    async fn import_account(id_account: i32, ctx: &GQLContext) -> FieldResult<bool> {
+        zcvlib::api::simple::import_account(id_account as u32, &ctx.0).await?;
         Ok(true)
     }
 }

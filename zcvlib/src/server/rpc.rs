@@ -48,7 +48,7 @@ impl VoteStreamer for ZCVServer {
             let e: ElectionPropsPub = serde_json::from_str(&election.election).unwrap();
             let election = {
                 let c = self.context.lock().await;
-                let (nf_root, cmx_tree_state) = fetch_initial_roots(&c.context.lwd_url, &c.context.pir_url, e.end).await?;
+                let (nf_root, cmx_tree_state) = fetch_initial_roots(&c.context.lwd_url, &e.pir, e.end).await?;
                 Election {
                     nf_root,
                     cmx_tree_state,

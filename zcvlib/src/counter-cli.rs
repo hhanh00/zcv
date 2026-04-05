@@ -37,7 +37,7 @@ pub async fn main() -> Result<()> {
     } = config;
     let db_path = db_path.unwrap_or("count.db".to_string());
 
-    let context = Context::new(&db_path, "", "", &election_url).await?;
+    let context = Context::new(&db_path, "", &election_url).await?;
 
     decode_ballots(seed, &context).await?;
     let tally_items = collect_results(&context).await?;
