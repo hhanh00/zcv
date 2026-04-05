@@ -1,5 +1,5 @@
 ---
-pir: "https://eth.taila9c148.ts.net"
+pir: "http://127.0.0.1:8080"
 end: 3169000
 need_sig: true
 name: Test Election

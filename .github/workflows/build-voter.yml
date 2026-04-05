@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v5
+        with:
+          version: latest
       - name: Install dependencies
         run: |
           curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz -o grpcurl.tar.gz
@@ -27,6 +30,11 @@ jobs:
           go install github.com/cometbft/cometbft/cmd/cometbft@v0.38
           GOBIN=$(go env GOPATH)/bin
           echo "$GOBIN" >> $GITHUB_PATH
+      - name: Run mock pir server
+        run: |
+          cd tests/pir
+          pnpm i
+          pnpm http-server . &
       - name: Build
         run: |
           cargo build -r
