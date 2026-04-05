@@ -19,6 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      - uses: pnpm/action-setup@v5
       - name: Install dependencies
         run: |
           curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.3/grpcurl_1.9.3_linux_x86_64.tar.gz -o grpcurl.tar.gz
@@ -30,6 +31,11 @@ jobs:
           echo "$GOBIN" >> $GITHUB_PATH
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Run mock pir server
+        run: |
+          cd tests/pir
+          pnpm i
+          pnpm http-server . &
       - name: Setup cluster
         run: |
           for i in {1..2}; do
