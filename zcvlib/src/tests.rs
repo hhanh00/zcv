@@ -22,11 +22,11 @@ pub const TEST_SEED2: &str = "purity comic seek skull unfair host point dutch dr
 pub const TEST_ELECTION_SEED: &str =
     "stool rich together paddle together pool raccoon promote attitude peasant latin concert";
 pub const TEST_ELECTION_HASH: &[u8] =
-    &hex!("fe3e798167bbb848421923beeb9b805911641802301cd07743138e12dda0022d");
+    &hex!("b421701e93852a875f71fc07a9f09360028c30bb08ec90eec1a1cad536953b05");
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const TEST_ELECTION: LazyCell<Value> = LazyCell::new(|| json!({
-        "start": 3168000,
+        "pir": "",
         "end": 3169000,
         "need_sig": true,
         "name": "Test Election",
