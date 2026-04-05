@@ -19,8 +19,6 @@ pub struct Config {
     #[clap(short, long, value_parser)]
     pub lwd_url: Option<String>,
     #[clap(short, long, value_parser)]
-    pub pir_url: Option<String>,
-    #[clap(short, long, value_parser)]
     pub election_url: String,
     #[clap(short, long, value_parser)]
     pub port: Option<u16>,
@@ -38,16 +36,14 @@ async fn main() -> Result<()> {
     let Config {
         db_path,
         lwd_url,
-        pir_url,
         election_url,
         port,
     } = config;
     let db_path = db_path.unwrap_or("voter.db".to_string());
     let lwd_url = lwd_url.unwrap_or("https://zec.rocks".to_string());
-    let pir_url = pir_url.unwrap_or("https://eth.taila9c148.ts.net".to_string());
     let port = port.unwrap_or(8000);
 
-    let context = GQLContext(Context::new(&db_path, &lwd_url, &pir_url, &election_url).await?);
+    let context = GQLContext(Context::new(&db_path, &lwd_url, &election_url).await?);
 
     let schema = Schema::new(Query {}, Mutation {}, EmptySubscription::default());
 

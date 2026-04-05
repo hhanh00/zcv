@@ -44,9 +44,10 @@ pub async fn client_delete_election_data(context: &Context, new_account: Option<
 
 pub async fn scan_ballots(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
+    let (election, _, _) = get_election(&mut conn).await?;
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
-    let pir_client = PirClient::connect(&context.pir_url).await?;
+    let pir_client = PirClient::connect(&election.pir).await?;
     let start = get_election_height(&mut conn).await? + 1;
     let rep = client
         .get_latest_vote_height(Request::new(Empty {}))
@@ -188,8 +189,8 @@ pub async fn import_election(context: &Context) -> Result<(Vec<u8>, Vec<u8>)>
         .await?
         .into_inner()
         .election;
-    let election: crate::pod::ElectionPropsPub = serde_json::from_str(&election_json)?;
-    let (nf_root, cmx_tree) = crate::lwd::fetch_initial_roots(&context.lwd_url, &context.pir_url, election.end).await?;
+    let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
+    let (nf_root, cmx_tree) = crate::lwd::fetch_initial_roots(&context.lwd_url, &election.pir, election.end).await?;
     let mut conn = context.connect().await?;
     crate::db::store_election(&mut conn, &election, &nf_root, &cmx_tree).await?;
     Ok((nf_root, cmx_tree))
@@ -197,8 +198,9 @@ pub async fn import_election(context: &Context) -> Result<(Vec<u8>, Vec<u8>)>
 
 pub async fn import_account(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
+    let (election, _, _) = get_election(&mut conn).await?;
     let mut client = connect(&context.lwd_url).await?;
-    let pir_client = PirClient::connect(&context.pir_url).await?;
+    let pir_client = PirClient::connect(&election.pir).await?;
     let (election, ..) = get_election(&mut conn).await?;
     let domain = Fp::from_repr(tiu!(election.domain)).unwrap();
     let height = election.end;

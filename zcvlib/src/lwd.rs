@@ -163,8 +163,10 @@ pub async fn scan_ballots(
                     )
                     .await?;
 
-                    let mut w = Witness::default();
-                    w.position = position;
+                    let w = Witness {
+                        position,
+                        ..Witness::default()
+                    };
                     new_notes.push((None, note, w));
 
                     // track new note nullifier

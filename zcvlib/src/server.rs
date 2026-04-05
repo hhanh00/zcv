@@ -54,10 +54,9 @@ impl Server {
     pub async fn new(
         pool: SqlitePool,
         lwd_url: &str,
-        pir_url: &str,
         skip_validation: bool,
     ) -> ZCVResult<Self> {
-        let server = ServerState::new(pool, lwd_url, pir_url, skip_validation).await?;
+        let server = ServerState::new(pool, lwd_url, skip_validation).await?;
         Ok(Self {
             state: Arc::new(Mutex::new(server)),
         })
@@ -66,7 +65,6 @@ impl Server {
 
 pub struct ServerState {
     pub lwd_url: String,
-    pub pir_url: String,
     pub pool: SqlitePool,
     pub locked: bool,
     pub election: Option<ElectionPropsPub>,
@@ -84,7 +82,6 @@ impl ServerState {
     pub async fn new(
         pool: SqlitePool,
         lwd_url: &str,
-        pir_url: &str,
         skip_validation: bool,
     ) -> ZCVResult<Self> {
         let hasher = OrchardHasher::default();
@@ -93,7 +90,6 @@ impl ServerState {
             check_witnesses_cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
             skip_validation,
             lwd_url: lwd_url.to_string(),
-            pir_url: pir_url.to_string(),
             locked: false,
             election: None,
             domain: Fp::zero(),
@@ -641,16 +637,15 @@ pub async fn run_cometbft_app(
     context: Arc<tokio::sync::Mutex<BFTContext>>,
     port: u16,
 ) -> ZCVResult<()> {
-    let (pool, lwd_url, pir_url, skip_validation) = {
+    let (pool, lwd_url, skip_validation) = {
         let c = context.lock().await;
         (
             c.context.pool.clone(),
             c.context.lwd_url.clone(),
-            c.context.pir_url.clone(),
             c.skip_validation,
         )
     };
-    let app = Server::new(pool, &lwd_url, &pir_url, skip_validation).await?;
+    let app = Server::new(pool, &lwd_url, skip_validation).await?;
     let server = ServerBuilder::new(1_000_000)
         .bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port), app)
         .anyhow()?;

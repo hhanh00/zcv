@@ -22,7 +22,7 @@ pub const ZCV_MNEMONIC_DOMAIN: &[u8] = b"ZCVote__Personal";
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ElectionProps {
     pub secret_seed: Option<String>,
-    pub start: u32,
+    pub pir: String,
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
@@ -41,7 +41,7 @@ pub struct QuestionProp {
 #[serde_as]
 #[derive(Clone, Encode, Serialize, Deserialize, Debug)]
 pub struct ElectionPropsPub {
-    pub start: u32,
+    pub pir: String,
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
@@ -57,7 +57,7 @@ pub const ZCV_HRP: &str = "zcv";
 impl ElectionProps {
     pub fn build(self, secret_seed: &str) -> ZCVResult<ElectionPropsPub> {
         let ElectionProps {
-            start,
+            pir,
             end,
             need_sig,
             name,
@@ -80,7 +80,6 @@ impl ElectionProps {
             bech32::encode::<Bech32m>(hrp, &address.to_raw_address_bytes()).anyhow()?;
 
         let eph = ElectionPropsHashable {
-            start,
             end,
             need_sig,
             name: name.clone(),
@@ -90,7 +89,7 @@ impl ElectionProps {
         let domain = eph.calculate_domain()?.to_repr().to_vec();
 
         let e = ElectionPropsPub {
-            start,
+            pir,
             end,
             need_sig,
             name,
@@ -106,7 +105,6 @@ impl ElectionProps {
 
 #[derive(Clone, Encode, Debug)]
 pub struct ElectionPropsHashable {
-    pub start: u32,
     pub end: u32,
     pub need_sig: bool,
     pub name: String,
