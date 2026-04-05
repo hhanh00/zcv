@@ -1,5 +1,5 @@
 {
-  "start": 3168000,
+  "pir": "http://127.0.0.1:8080",
   "end": 3169000,
   "need_sig": true,
   "name": "Test Election",
@@ -32,5 +32,5 @@
     }
   ],
   "address": "zcv1re3za92mksd4hga0xw6rwxlklkxsqe9nuqqtdws8mu7cynd6gee74863uq4s9aze6q2zywze20y",
-  "domain": "fe3e798167bbb848421923beeb9b805911641802301cd07743138e12dda0022d"
+  "domain": "b421701e93852a875f71fc07a9f09360028c30bb08ec90eec1a1cad536953b05"
 }
