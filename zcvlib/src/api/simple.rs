@@ -3,6 +3,7 @@ use ff::PrimeField;
 use orchard::vote::Ballot;
 use pasta_curves::Fp;
 use pir_client::PirClient;
+use sqlx::Connection;
 use tonic::Request;
 use tonic::transport::Endpoint;
 use zcash_protocol::consensus::Network;
@@ -181,7 +182,7 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
     Ok(address)
 }
 
-pub async fn import_election(account: u32, url: &str, context: &Context) -> Result<(ElectionPropsPub, Vec<u8>, Vec<u8>)>
+pub async fn import_election(id_account: u32, url: &str, context: &Context) -> Result<(ElectionPropsPub, Vec<u8>, Vec<u8>)>
 {
     let ep = Endpoint::from_shared(url.to_string())?;
     let mut client = VoteStreamerClient::connect(ep).await?;
@@ -193,7 +194,17 @@ pub async fn import_election(account: u32, url: &str, context: &Context) -> Resu
     let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
     let (nf_root, cmx_tree) = crate::lwd::fetch_initial_roots(&context.lwd_url, &election.pir, election.end).await?;
     let mut conn = context.connect().await?;
-    crate::db::store_election(&mut conn, account, url, &election, &nf_root, &cmx_tree).await?;
+    let mut db_tx = conn.begin().await?;
+    crate::db::store_election(&mut db_tx, id_account, url, &election, &nf_root, &cmx_tree).await?;
+    let mut client = connect(&context.lwd_url).await?;
+    let pir_client = PirClient::connect(&election.pir).await?;
+    let domain = Fp::from_repr(tiu!(election.domain.clone())).unwrap();
+    let height = election.end;
+    crate::balance::import_account(&Network::MainNetwork,
+        &mut db_tx,
+        &mut client, &pir_client,
+        id_account, domain, height).await?;
+    db_tx.commit().await?;
     Ok((election, nf_root, cmx_tree))
 }
 
