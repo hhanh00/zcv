@@ -24,8 +24,6 @@ path = "src/counter-cli.rs"
 [dependencies]
 # flutter_rust_bridge = "=2.11.1"
 
-orchard = { workspace = true }
-orchard-vote = { workspace = true }
 figment = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -72,6 +70,8 @@ bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 
+orchard = { workspace = true }
+orchard-vote = { workspace = true }
 zcash-trees = { workspace = true }
 pir-client = { workspace = true }
 csv = "1.4"
