@@ -25,6 +25,7 @@ path = "src/counter-cli.rs"
 # flutter_rust_bridge = "=2.11.1"
 
 orchard = { workspace = true }
+orchard-vote = { workspace = true }
 figment = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
