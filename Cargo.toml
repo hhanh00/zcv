@@ -5,8 +5,8 @@
 # path = "./orchard"
 
 [workspace]
-exclude = ["orchard"]
-members = ["zcvlib", "setup"]
+exclude = ["orchard", "orchard-vote"]
+members = ["zcvlib"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -61,6 +61,10 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 git = "https://github.com/hhanh00/zkool2"
 rev = "97ba893f61c422c7f8032ab341f6473eab94ae20"
 features = ["imt"]
+
+[workspace.dependencies.orchard-vote]
+git = "https://github.com/hhanh00/orchard-vote"
+rev = "2d744ed4abdd19496861120f03410ac7967ab26a"
 
 [workspace.dependencies.pir-client]
 git = "https://github.com/hhanh00/vote-nullifier-pir"
