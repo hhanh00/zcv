@@ -15,9 +15,7 @@ pub async fn query_pir_proof(nullifier: Fp, server_url: &str) -> Result<ImtProof
 mod tests {
     use anyhow::Result;
     use ff::PrimeField;
-    use orchard::{
-        vote::{MerklePathGeneric, NfExclusion, NfExclusionInfo},
-    };
+    use orchard_vote::{MerklePathGeneric, NfExclusion, NfExclusionInfo};
     use pasta_curves::Fp;
     use pir_client::{ImtProofData, PirClient};
 

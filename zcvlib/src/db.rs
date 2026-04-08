@@ -11,8 +11,8 @@ use orchard::{
     keys::{Diversifier, FullViewingKey, IncomingViewingKey, SpendingKey},
     note::{RandomSeed, Rho},
     value::NoteValue,
-    vote::{Ballot, BallotData, BallotWitnesses},
 };
+use orchard_vote::{Ballot, BallotData, BallotWitnesses};
 use pasta_curves::Fp;
 use sqlx::{Acquire, Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
 use zcash_protocol::consensus::{Network, NetworkConstants};
@@ -794,7 +794,7 @@ mod tests {
     };
     use anyhow::Result;
     use ff::PrimeField;
-    use orchard::vote::{Ballot, BallotAnchors, BallotData, BallotWitnesses};
+    use orchard_vote::{Ballot, BallotAnchors, BallotData, BallotWitnesses};
     use sqlx::{query, query_as};
 
     #[tokio::test]

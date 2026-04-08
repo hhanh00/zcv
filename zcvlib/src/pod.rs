@@ -6,8 +6,8 @@ use orchard::{
     keys::{Diversifier, FullViewingKey, Scope},
     note::{RandomSeed, Rho},
     value::NoteValue,
-    vote::calculate_domain,
 };
+use orchard_vote::calculate_domain;
 use pasta_curves::Fp;
 use pir_client::ImtProofData;
 use serde::{Deserialize, Serialize};

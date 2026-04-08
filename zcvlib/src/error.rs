@@ -8,7 +8,7 @@ pub enum Error {
     #[error("Duplicate Nullifier")]
     Duplicate,
     #[error(transparent)]
-    Vote(#[from] orchard::vote::VoteError),
+    Vote(#[from] orchard_vote::VoteError),
     #[error(transparent)]
     Tonic(#[from] tonic::Status),
     #[error(transparent)]

@@ -498,7 +498,7 @@ impl ServerState {
     pub async fn check_witnesses(
         conn: &mut SqliteConnection,
         e: &ElectionPropsPub,
-        ballot: &orchard::vote::Ballot,
+        ballot: &orchard_vote::Ballot,
         e_domain: Fp,
         e_nf_root: MerkleHashOrchard,
         cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
@@ -538,7 +538,7 @@ impl ServerState {
             check_cmx_root(conn, &cmx_root.to_bytes()).await?;
 
             tracing::info!("Public anchors checked");
-            orchard::vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
+            orchard_vote::validate_ballot(ballot.clone(), e.need_sig, &VK)?;
             tracing::info!("Witness checked");
         }
         {
@@ -551,7 +551,7 @@ impl ServerState {
     pub async fn check_ballot(
         conn: &mut SqliteConnection,
         election: &ElectionPropsPub,
-        ballot: orchard::vote::Ballot,
+        ballot: orchard_vote::Ballot,
         e_domain: Fp,
         e_nf_root: MerkleHashOrchard,
         cache: Arc<parking_lot::Mutex<HashMap<[u8; 32], bool>>>,
@@ -627,8 +627,8 @@ pub async fn submit_tx(tx_bytes: &[u8], port: u16) -> ZCVResult<Value> {
     Ok(json_rep)
 }
 
-pub fn from_protobuf(ballot: &Ballot) -> std::io::Result<orchard::vote::Ballot> {
-    let ballot = orchard::vote::Ballot::read(&*ballot.ballot)?;
+pub fn from_protobuf(ballot: &Ballot) -> std::io::Result<orchard_vote::Ballot> {
+    let ballot = orchard_vote::Ballot::read(&*ballot.ballot)?;
     Ok(ballot)
 }
 
