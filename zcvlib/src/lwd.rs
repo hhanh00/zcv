@@ -19,8 +19,8 @@ use ff::PrimeField;
 use orchard::{
     Note,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    vote::try_decrypt_ballot,
 };
+use orchard_vote::try_decrypt_ballot;
 use pasta_curves::Fp;
 use pir_client::PirClient;
 use sqlx::{Acquire, SqliteConnection, query, query_as};
@@ -135,7 +135,7 @@ pub async fn scan_ballots(
     let mut cmxs = vec![];
     while let Some(ballot) = ballots.message().await? {
         let height = ballot.height;
-        let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
+        let ballot = orchard_vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
         let domain = Fp::from_repr(data.domain).unwrap();
         for a in data.actions.iter() {
@@ -303,7 +303,7 @@ pub async fn decode_ballots(
 
     while let Some(ballot) = ballots.message().await? {
         let height = ballot.height;
-        let ballot = orchard::vote::Ballot::read(&*ballot.ballot).anyhow()?;
+        let ballot = orchard_vote::Ballot::read(&*ballot.ballot).anyhow()?;
         let data = &ballot.data;
         for a in data.actions.iter() {
             if let Some((note, memo)) = try_decrypt_ballot(&pivk, a.clone())? {

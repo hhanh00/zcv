@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ff::PrimeField;
-use orchard::vote::Ballot;
+use orchard_vote::Ballot;
 use pasta_curves::Fp;
 use pir_client::PirClient;
 use sqlx::Connection;

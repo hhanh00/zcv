@@ -2,7 +2,7 @@ use std::cell::LazyCell;
 
 use anyhow::Result;
 use hex_literal::hex;
-use orchard::vote::BallotData;
+use orchard_vote::BallotData;
 use pasta_curves::Fp;
 use rand_core::OsRng;
 use serde_json::{Value, json};

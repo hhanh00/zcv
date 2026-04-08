@@ -2,12 +2,10 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use bincode::config::legacy;
 use ff::PrimeField;
-use orchard::{
-    Address, Note,
-    vote::{
-        Ballot, BallotWitnesses, Circuit, CmxInclusion, MerklePathGeneric,
-        NfExclusion, ProvingKey, VerifyingKey, vote_with_nf_exclusion,
-    },
+use orchard::{Address, Note};
+use orchard_vote::{
+    Ballot, BallotWitnesses, Circuit, CmxInclusion, MerklePathGeneric,
+    NfExclusion, ProvingKey, VerifyingKey, vote_with_nf_exclusion,
 };
 use pasta_curves::Fp;
 use pir_client::ImtProofData;

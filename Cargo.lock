@@ -1378,26 +1378,6 @@ dependencies = [
 
 [[package]]
 name = "halo2_gadgets"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73a5e510d58a07d8ed238a5a8a436fe6c2c79e1bb2611f62688bc65007b4e6e7"
-dependencies = [
- "arrayvec",
- "bitvec",
- "ff",
- "group",
- "halo2_poseidon",
- "halo2_proofs",
- "lazy_static",
- "pasta_curves",
- "rand 0.8.5",
- "sinsemilla",
- "subtle",
- "uint",
-]
-
-[[package]]
-name = "halo2_gadgets"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45824ce0dd12e91ec0c68ebae2a7ed8ae19b70946624c849add59f1d1a62a143"
@@ -1862,11 +1842,11 @@ dependencies = [
 [[package]]
 name = "imt-tree"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e#8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e"
 dependencies = [
  "anyhow",
  "ff",
- "halo2_gadgets 0.3.1",
+ "halo2_gadgets",
  "hex",
  "pasta_curves",
  "rayon",
@@ -2401,78 +2381,6 @@ dependencies = [
 
 [[package]]
 name = "orchard"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1ef66fcf99348242a20d582d7434da381a867df8dc155b3a980eca767c56137"
-dependencies = [
- "aes",
- "bitvec",
- "blake2b_simd",
- "core2",
- "ff",
- "fpe",
- "getset",
- "group",
- "halo2_gadgets 0.3.1",
- "halo2_poseidon",
- "halo2_proofs",
- "hex",
- "incrementalmerkletree",
- "lazy_static",
- "memuse",
- "nonempty",
- "pasta_curves",
- "rand 0.8.5",
- "reddsa",
- "serde",
- "sinsemilla",
- "subtle",
- "tracing",
- "visibility",
- "zcash_note_encryption",
- "zcash_spec",
- "zip32",
-]
-
-[[package]]
-name = "orchard"
-version = "0.11.0"
-source = "git+https://github.com/hhanh00/orchard.git?rev=c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124#c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124"
-dependencies = [
- "aes",
- "bitvec",
- "blake2b_simd",
- "byteorder",
- "core2",
- "ff",
- "fpe",
- "getset",
- "group",
- "halo2_gadgets 0.3.1",
- "halo2_poseidon",
- "halo2_proofs",
- "hex",
- "incrementalmerkletree",
- "lazy_static",
- "memuse",
- "nonempty",
- "pasta_curves",
- "rand 0.8.5",
- "reddsa",
- "serde",
- "sinsemilla",
- "subtle",
- "thiserror 1.0.69",
- "tracing",
- "visibility",
- "zcash_encoding",
- "zcash_note_encryption",
- "zcash_spec",
- "zip32",
-]
-
-[[package]]
-name = "orchard"
 version = "0.12.0"
 source = "git+https://github.com/hhanh00/orchard?rev=714e2e8feaf70894448644f6793796741240bcd9#714e2e8feaf70894448644f6793796741240bcd9"
 dependencies = [
@@ -2484,7 +2392,7 @@ dependencies = [
  "fpe",
  "getset",
  "group",
- "halo2_gadgets 0.4.0",
+ "halo2_gadgets",
  "halo2_poseidon",
  "halo2_proofs",
  "hex",
@@ -2517,11 +2425,11 @@ dependencies = [
  "core2",
  "ff",
  "group",
- "halo2_gadgets 0.4.0",
+ "halo2_gadgets",
  "halo2_proofs",
  "hex",
  "incrementalmerkletree",
- "orchard 0.12.0",
+ "orchard",
  "pasta_curves",
  "rand 0.8.5",
  "serde",
@@ -2651,7 +2559,7 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 [[package]]
 name = "pir-client"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e#8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e"
 dependencies = [
  "anyhow",
  "ff",
@@ -2670,7 +2578,7 @@ dependencies = [
 [[package]]
 name = "pir-types"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=016392d09e84d1de43ed04d138b0692c595bb4af#016392d09e84d1de43ed04d138b0692c595bb4af"
+source = "git+https://github.com/hhanh00/vote-nullifier-pir?rev=8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e#8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e"
 dependencies = [
  "anyhow",
  "ff",
@@ -5175,18 +5083,18 @@ dependencies = [
 [[package]]
 name = "zcash-trees"
 version = "0.1.0"
-source = "git+https://github.com/hhanh00/zcash-trees?rev=426d4b26dfc6d051c2c3f665bfd4057063394874#426d4b26dfc6d051c2c3f665bfd4057063394874"
+source = "git+https://github.com/hhanh00/zcash-trees?rev=59aed0867b4923437b725a9ded365e458a823d8a#59aed0867b4923437b725a9ded365e458a823d8a"
 dependencies = [
  "anyhow",
  "bincode",
  "blake2b_simd",
  "chacha20",
- "halo2_gadgets 0.3.1",
+ "halo2_gadgets",
  "halo2_proofs",
  "hex",
  "incrementalmerkletree",
  "jubjub",
- "orchard 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "orchard",
  "rayon",
  "sapling-crypto",
  "secp256k1",
@@ -5320,7 +5228,7 @@ dependencies = [
  "juniper",
  "juniper_graphql_ws",
  "juniper_warp",
- "orchard 0.11.0 (git+https://github.com/hhanh00/orchard.git?rev=c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124)",
+ "orchard",
  "orchard-vote",
  "parking_lot",
  "pasta_curves",
