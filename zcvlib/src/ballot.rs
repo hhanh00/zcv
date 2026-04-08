@@ -2,8 +2,8 @@ use ff::PrimeField;
 use orchard::{
     Address,
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-    vote::{BallotAnchors, BallotData, dummy_vote, encrypt_ballot_action, try_decrypt_ballot},
 };
+use orchard_vote::{BallotAnchors, BallotData, dummy_vote, encrypt_ballot_action, try_decrypt_ballot};
 use pasta_curves::Fp;
 use rand::seq::SliceRandom;
 use rand_core::{CryptoRng, RngCore};
@@ -181,10 +181,8 @@ mod tests {
     use anyhow::Result;
     use base64::Engine;
     use bech32::{Bech32m, Hrp};
-    use orchard::{
-        keys::{FullViewingKey, PreparedIncomingViewingKey, Scope},
-        vote::{Ballot, BallotWitnesses, try_decrypt_ballot},
-    };
+    use orchard::keys::{FullViewingKey, PreparedIncomingViewingKey, Scope};
+    use orchard_vote::{Ballot, BallotWitnesses, try_decrypt_ballot};
     use rand_core::OsRng;
     use zcash_protocol::consensus::Network;
 

@@ -1,8 +1,9 @@
-# [patch."https://github.com/hhanh00/zkool2"]
-# zcash-trees = { path = "../zcash-trees" }
+[patch."https://github.com/hhanh00/zcash-trees"]
+#zcash-trees = { path = "../zcash-trees" }
 
-# [patch.crates-io.orchard]
-# path = "./orchard"
+[patch.crates-io.orchard]
+git = "https://github.com/hhanh00/orchard"
+rev = "714e2e8feaf70894448644f6793796741240bcd9"
 
 [workspace]
 exclude = ["orchard", "orchard-vote"]
@@ -24,6 +25,7 @@ halo2_proofs = "0.3"
 hex-literal = "1.1"
 incrementalmerkletree = "0.8"
 log = "0.4"
+orchard = "0.12"
 parking_lot = "0.12"
 pasta_curves = "0.5"
 prost = "0.14"
@@ -59,7 +61,7 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 
 [workspace.dependencies.zcash-trees]
 git = "https://github.com/hhanh00/zcash-trees"
-rev = "426d4b26dfc6d051c2c3f665bfd4057063394874"
+rev = "59aed0867b4923437b725a9ded365e458a823d8a"
 features = ["imt"]
 
 [workspace.dependencies.orchard-vote]
@@ -68,16 +70,11 @@ rev = "2d744ed4abdd19496861120f03410ac7967ab26a"
 
 [workspace.dependencies.pir-client]
 git = "https://github.com/hhanh00/vote-nullifier-pir"
-rev = "016392d09e84d1de43ed04d138b0692c595bb4af"
+rev = "8e6acdea1c98e9587d9fe0e8e0be58c3ef9aa74e"
 
 [workspace.dependencies.hex]
 features = ["serde"]
 version = "0.4"
-
-[workspace.dependencies.orchard]
-git = "https://github.com/hhanh00/orchard.git"
-rev = "c6319ac04d1ae5a4b046c2cf9c209d1b3b5f0124"
-features = ["vote"]
 
 [workspace.dependencies.serde]
 features = ["derive"]
