@@ -184,14 +184,7 @@ pub async fn get_account_address(id_account: u32, context: &Context) -> Result<S
 
 pub async fn import_election(id_account: u32, url: &str, context: &Context) -> Result<(ElectionPropsPub, Vec<u8>, Vec<u8>)>
 {
-    let ep = Endpoint::from_shared(url.to_string())?;
-    let mut client = VoteStreamerClient::connect(ep).await?;
-    let election_json = client
-        .get_election(Request::new(Empty {}))
-        .await?
-        .into_inner()
-        .election;
-    let election: ElectionPropsPub = serde_json::from_str(&election_json)?;
+    let election = download_election(url).await?;
     let (nf_root, cmx_tree) = crate::lwd::fetch_initial_roots(&context.lwd_url, &election.pir, election.end).await?;
     let mut conn = context.connect().await?;
     let mut db_tx = conn.begin().await?;
@@ -208,12 +201,18 @@ pub async fn import_election(id_account: u32, url: &str, context: &Context) -> R
     Ok((election, nf_root, cmx_tree))
 }
 
+pub async fn check_witnesses(id_account: u32, url: &str, context: &Context) -> Result<bool> {
+    let mut conn = context.connect().await?;
+    let election = download_election(url).await?;
+    let ok = crate::balance::check_witnesses(&mut conn, id_account, election.end).await?;
+    Ok(ok)
+}
+
 pub async fn import_account(id_account: u32, context: &Context) -> Result<()> {
     let mut conn = context.connect().await?;
     let (election, _, _) = get_election(&mut conn).await?;
     let mut client = connect(&context.lwd_url).await?;
     let pir_client = PirClient::connect(&election.pir).await?;
-    let (election, ..) = get_election(&mut conn).await?;
     let domain = Fp::from_repr(tiu!(election.domain)).unwrap();
     let height = election.end;
     crate::balance::import_account(&Network::MainNetwork,
@@ -227,4 +226,12 @@ async fn connect_to_vote_server(context: &Context) -> Result<VoteClient> {
     let ep = Endpoint::from_shared(context.election_url.clone())?;
     let client = VoteStreamerClient::connect(ep).await?;
     Ok(client)
+}
+
+async fn download_election(url: &str) -> Result<ElectionPropsPub> {
+    let ep = Endpoint::from_shared(url.to_string())?;
+    let mut client = VoteStreamerClient::connect(ep).await?;
+    let election = client.get_election(Request::new(Empty {})).await?.into_inner();
+    let election: ElectionPropsPub = serde_json::from_str(&election.election)?;
+    Ok(election)
 }
