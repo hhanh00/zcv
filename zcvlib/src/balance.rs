@@ -3,7 +3,7 @@ use bincode::config::legacy;
 use ff::PrimeField;
 use pasta_curves::Fp;
 use pir_client::PirClient;
-use sqlx::{Row, SqliteConnection, query, query_as, sqlite::SqliteRow};
+use sqlx::{Row, SqliteConnection, query, sqlite::SqliteRow};
 use tonic::Request;
 use zcash_protocol::consensus::Network;
 use zcash_trees::warp::{Witness, hasher::OrchardHasher, legacy::CommitmentTreeFrontier};
@@ -16,6 +16,30 @@ use crate::{
     pod::{ImtProofDataBin, UTXO},
     rpc::BlockId,
 };
+
+pub async fn check_witnesses(conn: &mut SqliteConnection, account: u32, height: u32) -> ZCVResult<bool> {
+    let n = query(
+        "SELECT n.id_note, MAX(w.height) AS max_witness_height
+        FROM notes n
+        JOIN witnesses w ON w.note = n.id_note AND w.account = n.account
+        LEFT JOIN spends s ON s.id_note = n.id_note AND s.height < ?1
+        WHERE n.account = ?2
+        AND n.height < ?1
+        AND n.pool = 2
+        AND s.id_note IS NULL
+        GROUP BY n.id_note",
+    )
+    .bind(height)
+    .bind(account)
+    .map(|r: SqliteRow| {
+        let id_note: u32 = r.get(0);
+        let height: u32 = r.get(1);
+        (id_note, height)
+    })
+    .fetch_all(conn)
+    .await?;
+    Ok(n.iter().all(|(_, witness_height)| *witness_height >= height))
+}
 
 pub async fn import_account(
     network: &Network,
@@ -82,66 +106,69 @@ pub async fn import_account(
     }
 
     // Find first witness height after the snapshot
-    let (witness_height,): (u32,) = query_as(
+    let witness_height = query(
         "SELECT DISTINCT height FROM witnesses
         WHERE height >= ?1 AND account = ?2
         ORDER BY height LIMIT 1",
     )
     .bind(height)
     .bind(account)
-    .fetch_one(&mut *conn)
+    .map(|r: SqliteRow| r.get::<u32, _>(0))
+    .fetch_optional(&mut *conn)
     .await
-    .context("No witness data after snapshot height")?;
+    .context("get witness_height")?;
 
-    let tree_state = client
-        .get_tree_state(Request::new(BlockId {
-            height: height as u64,
-            hash: vec![],
-        }))
-        .await?
-        .into_inner();
-    let orchard_tree = hex::decode(&tree_state.orchard_tree).anyhow()?;
-    let orchard_tree = CommitmentTreeFrontier::read(&*orchard_tree).anyhow()?;
-    let hasher = OrchardHasher::default();
-    let edge_position = orchard_tree.to_edge(&hasher).to_auth_path(&hasher).1;
+    if let Some(witness_height) = witness_height {
+        let tree_state = client
+            .get_tree_state(Request::new(BlockId {
+                height: height as u64,
+                hash: vec![],
+            }))
+            .await?
+            .into_inner();
+        let orchard_tree = hex::decode(&tree_state.orchard_tree).anyhow()?;
+        let orchard_tree = CommitmentTreeFrontier::read(&*orchard_tree).anyhow()?;
+        let hasher = OrchardHasher::default();
+        let edge_position = orchard_tree.to_edge(&hasher).to_auth_path(&hasher).1;
 
-    for (id, note, _, _, _) in notes.iter() {
-        let witness = query(
-            "SELECT witness FROM witnesses
+        for (id, note, _, _, _) in notes.iter() {
+            let witness = query(
+                "SELECT witness FROM witnesses
             WHERE account = ?1 AND note = ?2 AND height = ?3",
-        )
-        .bind(account)
-        .bind(*id)
-        .bind(witness_height)
-        .map(|r: SqliteRow| {
-            let witness: Vec<u8> = r.get(0);
-            let (witness, _) =
-                bincode::decode_from_slice::<Witness, _>(&witness, legacy()).unwrap();
-            witness
-        })
-        .fetch_one(&mut *conn)
-        .await
-        .with_context(|| format!("Cannot find witness {account} {} {witness_height}", *id))?;
-        let cmx_proof = witness.rewind(edge_position);
+            )
+            .bind(account)
+            .bind(*id)
+            .bind(witness_height)
+            .map(|r: SqliteRow| {
+                let witness: Vec<u8> = r.get(0);
+                let (witness, _) =
+                    bincode::decode_from_slice::<Witness, _>(&witness, legacy()).unwrap();
+                witness
+            })
+            .fetch_one(&mut *conn)
+            .await
+            .with_context(|| format!("Cannot find witness {account} {} {witness_height}", *id))?;
+            let cmx_proof = witness.rewind(edge_position);
 
-        let nf = note.nullifier(&fvk);
-        let nf = Fp::from_repr(nf.to_bytes()).unwrap();
-        let nf_proof = pir_client.fetch_proof(nf).await?;
+            let nf = note.nullifier(&fvk);
+            let nf = Fp::from_repr(nf.to_bytes()).unwrap();
+            let nf_proof = pir_client.fetch_proof(nf).await?;
 
-        let nf_proof: ImtProofDataBin = nf_proof.into();
-        let nf_bytes = bincode::encode_to_vec(&nf_proof, legacy()).anyhow()?;
+            let nf_proof: ImtProofDataBin = nf_proof.into();
+            let nf_bytes = bincode::encode_to_vec(&nf_proof, legacy()).anyhow()?;
 
-        let cmx_bytes = bincode::encode_to_vec(&cmx_proof, legacy()).anyhow()?;
+            let cmx_bytes = bincode::encode_to_vec(&cmx_proof, legacy()).anyhow()?;
 
-        query(
-            "INSERT INTO v_witnesses(id_note, nf, cmx)
+            query(
+                "INSERT INTO v_witnesses(id_note, nf, cmx)
             VALUES (?1, ?2, ?3)",
-        )
-        .bind(*id)
-        .bind(&nf_bytes)
-        .bind(&cmx_bytes)
-        .execute(&mut *conn)
-        .await?;
+            )
+            .bind(*id)
+            .bind(&nf_bytes)
+            .bind(&cmx_bytes)
+            .execute(&mut *conn)
+            .await?;
+        }
     }
 
     Ok(())
