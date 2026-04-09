@@ -1,3 +1,0 @@
-rust_input: crate::api
-rust_root: zcvlib/
-dart_output: lib/src/rust
