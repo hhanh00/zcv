@@ -48,10 +48,10 @@ pub async fn drop_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
         "v_elections",
         "v_notes",
         "v_spends",
+        "v_witnesses",
         "v_ballots",
         "v_actions",
-        "vc_nfs",
-        "vc_cmxs",
+        "vs_cmxs",
         "v_results",
         "v_final_results",
     ] {
@@ -160,7 +160,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     .execute(&mut *conn)
     .await?;
 
-    // server / validator
+    #[cfg(feature = "server")]
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS v_ballots(
         id_ballot INTEGER PRIMARY KEY,
@@ -172,15 +172,21 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+
+    #[cfg(feature = "server")]
     query(
         "CREATE TABLE IF NOT EXISTS vs_cmxs(
         cmx BLOB PRIMARY KEY NOT NULL)",
     )
     .execute(&mut *conn)
     .await?;
+
+    #[cfg(feature = "server")]
     let _ = query("ALTER TABLE vs_cmxs ADD COLUMN height INTEGER")
         .execute(&mut *conn)
         .await;
+
+    #[cfg(feature = "server")]
     query(
         "CREATE TABLE IF NOT EXISTS v_actions(
         id_action INTEGER PRIMARY KEY,
@@ -193,21 +199,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
-    query(
-        "CREATE TABLE IF NOT EXISTS vc_nfs(
-        id_nf INTEGER PRIMARY KEY,
-        nf BLOB NOT NULL)",
-    )
-    .execute(&mut *conn)
-    .await?;
-    query(
-        "CREATE TABLE IF NOT EXISTS vc_cmxs(
-        id_cmx INTEGER PRIMARY KEY,
-        cmx BLOB NOT NULL)",
-    )
-    .execute(&mut *conn)
-    .await?;
-    // server / validator
+
+    #[cfg(any(feature = "tally", feature = "client"))]
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS v_results(
         id_result INTEGER PRIMARY KEY,
@@ -216,6 +209,8 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     )
     .execute(&mut *conn)
     .await?;
+
+    #[cfg(any(feature = "tally", feature = "client"))]
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS v_final_results(
         idx_question INTEGER NOT NULL,
@@ -228,6 +223,7 @@ pub async fn create_schema(conn: &mut SqliteConnection) -> ZCVResult<()> {
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn set_account_seed(
     conn: &mut SqliteConnection,
     account: u32,
@@ -248,6 +244,7 @@ pub async fn set_account_seed(
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn get_account_sk(
     network: &Network,
     conn: &mut SqliteConnection,
@@ -263,6 +260,7 @@ pub async fn get_account_sk(
     Ok(sk)
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn get_account_address(
     network: &Network,
     conn: &mut SqliteConnection,
@@ -331,6 +329,7 @@ pub async fn store_election(
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn client_delete_election_data(
     conn: &mut SqliteConnection,
     new_account: Option<u32>,
@@ -342,8 +341,6 @@ pub async fn client_delete_election_data(
         .await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
     query("UPDATE v_state SET height = (SELECT start - 1 FROM v_elections WHERE id_election = 0) WHERE id = 0")
         .execute(&mut *db_tx)
         .await?;
@@ -352,6 +349,7 @@ pub async fn client_delete_election_data(
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()> {
     let mut db_tx = conn.begin().await?;
     query(
@@ -365,13 +363,12 @@ pub async fn client_delete_election(conn: &mut SqliteConnection) -> ZCVResult<()
         .await?;
     query("DELETE FROM v_notes").execute(&mut *db_tx).await?;
     query("DELETE FROM v_spends").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_nfs").execute(&mut *db_tx).await?;
-    query("DELETE FROM vc_cmxs").execute(&mut *db_tx).await?;
 
     db_tx.commit().await?;
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn get_ivks(
     network: &Network,
     conn: &mut SqliteConnection,
@@ -414,6 +411,7 @@ pub async fn get_domain(conn: &mut SqliteConnection) -> ZCVResult<(Fp, String)> 
     Ok((domain, address))
 }
 
+#[cfg(feature = "server")]
 pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8], height: u32) -> ZCVResult<()> {
     query("INSERT INTO vs_cmxs(cmx, height) VALUES (?1, ?2) ON CONFLICT DO NOTHING")
         .bind(cmx)
@@ -423,6 +421,7 @@ pub async fn store_cmx_root(conn: &mut SqliteConnection, cmx: &[u8], height: u32
     Ok(())
 }
 
+#[cfg(feature = "server")]
 pub async fn check_cmx_root(conn: &mut SqliteConnection, cmx_root: &[u8]) -> ZCVResult<()> {
     let exist: Option<(bool,)> = query_as("SELECT 1 FROM vs_cmxs WHERE cmx = ?1")
         .bind(cmx_root)
@@ -470,6 +469,7 @@ pub async fn get_election_frontier(conn: &mut SqliteConnection) -> ZCVResult<Vec
     Ok(frontier)
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn list_unspent_nullifiers(
     conn: &mut SqliteConnection,
     id_account: u32,
@@ -489,6 +489,7 @@ pub async fn list_unspent_nullifiers(
     Ok(dnfs)
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVResult<SpendingKey> {
     let mnemonic = Mnemonic::parse(seed).anyhow()?;
     let seed = mnemonic.to_seed("");
@@ -501,6 +502,7 @@ pub fn derive_spending_key(network: &Network, seed: &str, aindex: u32) -> ZCVRes
     Ok(spk)
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> ZCVResult<()> {
     query("DELETE FROM v_notes WHERE height >= ?1 AND height <= ?2")
         .bind(start)
@@ -510,39 +512,7 @@ pub async fn delete_range(conn: &mut SqliteConnection, start: u32, end: u32) -> 
     Ok(())
 }
 
-pub async fn store_nf_cmx(
-    conn: &mut SqliteConnection,
-    nullifier: &[u8],
-    cmx: &[u8],
-) -> ZCVResult<()> {
-    query(
-        "INSERT INTO vc_nfs(nf) VALUES (?1)
-        ON CONFLICT DO NOTHING",
-    )
-    .bind(nullifier)
-    .execute(&mut *conn)
-    .await?;
-    query(
-        "INSERT INTO vc_cmxs(cmx) VALUES (?1)
-        ON CONFLICT DO NOTHING",
-    )
-    .bind(cmx)
-    .execute(&mut *conn)
-    .await?;
-    Ok(())
-}
-
-pub async fn store_cmx(conn: &mut SqliteConnection, cmx: &[u8]) -> ZCVResult<()> {
-    query(
-        "INSERT INTO vc_cmxs(cmx) VALUES (?1)
-        ON CONFLICT DO NOTHING",
-    )
-    .bind(cmx)
-    .execute(&mut *conn)
-    .await?;
-    Ok(())
-}
-
+#[cfg(any(feature = "client", feature = "server"))]
 #[allow(clippy::too_many_arguments)]
 pub async fn store_received_note(
     conn: &mut SqliteConnection,
@@ -582,6 +552,7 @@ pub async fn store_received_note(
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub(crate) fn note_from_parts(
     fvk: &FullViewingKey,
     scope: u32,
@@ -602,6 +573,7 @@ pub(crate) fn note_from_parts(
     Note::from_parts(recipient, NoteValue::from_raw(value), rho, rseed).unwrap()
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn list_election_witnesses(
     conn: &mut SqliteConnection,
     fvk: &FullViewingKey,
@@ -635,6 +607,7 @@ pub async fn list_election_witnesses(
     Ok(result)
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn store_election_witness(
     conn: &mut SqliteConnection,
     id_note: Option<u32>,
@@ -655,6 +628,7 @@ pub async fn store_election_witness(
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn store_spend(conn: &mut SqliteConnection, nf: &[u8], height: u32) -> ZCVResult<()> {
     query(
         "INSERT INTO v_spends
@@ -668,6 +642,7 @@ pub async fn store_spend(conn: &mut SqliteConnection, nf: &[u8], height: u32) ->
     Ok(())
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub async fn store_ballot_spend(
     conn: &mut SqliteConnection,
     id_account: u32,
@@ -687,6 +662,7 @@ pub async fn store_ballot_spend(
     Ok(())
 }
 
+#[cfg(feature = "server")]
 pub async fn store_ballot(
     conn: &mut SqliteConnection,
     height: u32,
@@ -733,6 +709,7 @@ pub async fn store_ballot(
     Ok(id_ballot)
 }
 
+#[cfg(feature = "server")]
 pub async fn get_ballot_range(
     mut conn: SqliteConnection,
     start: u32,
@@ -774,6 +751,7 @@ pub async fn get_ballot_range(
     Ok(())
 }
 
+#[cfg(any(feature = "tally", feature = "client", feature = "server"))]
 pub async fn store_result(conn: &mut SqliteConnection, memo: &[u8], value: u64) -> ZCVResult<()> {
     query(
         "INSERT INTO v_results(answer, votes)
@@ -812,6 +790,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "client")]
     #[tokio::test]
     async fn test_invalid_seed() -> Result<()> {
         let mut conn = get_connection().await?;
@@ -820,6 +799,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "client")]
     #[tokio::test]
     async fn test_good_seed() -> Result<()> {
         let mut conn = get_connection().await?;
@@ -828,6 +808,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "server")]
     #[tokio::test]
     async fn test_store_ballot() -> Result<()> {
         let mut conn = get_connection().await?;

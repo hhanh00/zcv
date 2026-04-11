@@ -5,25 +5,59 @@ version = "0.5.0"
 license = "MIT"
 description = "A rust library to coin weighted voting for Zcash"
 
+[features]
+default = ["client", "server"]
+client = [
+    "reqwest",
+    "tonic",
+    "tonic-prost",
+    "prost",
+    "bigdecimal",
+    "chrono",
+]
+graphql = [
+    "client",
+    "juniper",
+    "juniper_warp",
+    "juniper_graphql_ws",
+    "warp",
+]
+server = [
+    "reqwest",
+    "tendermint-abci",
+    "tendermint",
+    "tendermint-proto",
+    "tonic",
+    "tonic-prost",
+    "prost",
+    "tonic-prost-build",
+]
+tally = ["csv"]
+
 [[bin]]
 name = "vote-cometbft"
 path = "src/cometapp.rs"
+required-features = ["server"]
 
 [[bin]]
 name = "voter"
 path = "src/voter-cli.rs"
+required-features = ["graphql"]
 
 [[bin]]
 name = "creator"
 path = "src/creator-cli.rs"
+required-features = ["client"]
 
 [[bin]]
 name = "counter"
 path = "src/counter-cli.rs"
+required-features = ["client", "tally"]
 
 [dependencies]
 # flutter_rust_bridge = "=2.11.1"
 
+# Core dependencies (always needed)
 figment = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -48,36 +82,41 @@ zip32 = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
-tonic = { workspace = true }
-tonic-prost = { workspace = true }
-prost = { workspace = true }
 blake2b_simd = { workspace = true }
 rand_core = { workspace = true }
 rand = { workspace = true }
 hex-literal = { workspace = true }
-
-tendermint-abci = { workspace = true }
-tendermint = { workspace = true }
-tendermint-proto = { workspace = true }
-reqwest = { workspace = true }
-base64 = { workspace = true }
-
-juniper = { workspace = true }
-juniper_warp = { workspace = true }
-juniper_graphql_ws = { workspace = true }
-warp = { workspace = true }
-bigdecimal = { workspace = true }
-chrono = { workspace = true }
 clap = { workspace = true }
-
+base64 = { workspace = true }
 orchard = { workspace = true }
 orchard-vote = { workspace = true }
 zcash-trees = { workspace = true }
 pir-client = { workspace = true }
-csv = "1.4"
+
+# Client dependencies
+reqwest = { workspace = true, optional = true }
+bigdecimal = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+
+# GraphQL dependencies
+juniper = { workspace = true, optional = true }
+juniper_warp = { workspace = true, optional = true }
+juniper_graphql_ws = { workspace = true, optional = true }
+warp = { workspace = true, optional = true }
+
+# Server dependencies
+tendermint-abci = { workspace = true, optional = true }
+tendermint = { workspace = true, optional = true }
+tendermint-proto = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+tonic-prost = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+
+# Tally dependencies
+csv = { version = "1.4", optional = true }
 
 [build-dependencies]
-tonic-prost-build = { workspace = true }
+tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
 serial_test = { workspace = true }

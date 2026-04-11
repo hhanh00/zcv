@@ -1,11 +1,15 @@
+#[cfg(feature = "graphql")]
 use bigdecimal::BigDecimal;
+#[cfg(feature = "graphql")]
 use juniper::{FieldResult, GraphQLObject, graphql_object};
-use zcvlib::db::set_account_seed;
 
+use crate::{db::set_account_seed, error::IntoAnyhow};
 use crate::voter::{GQLContext, from_zats, to_zats};
 
+#[cfg(feature = "graphql")]
 pub struct Mutation {}
 
+#[cfg(feature = "graphql")]
 #[graphql_object]
 #[graphql(
     context = GQLContext,
@@ -23,17 +27,17 @@ impl Mutation {
     }
 
     async fn scan_ballots(id_account: i32, context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::scan_ballots(id_account as u32, &context.0).await?;
+        crate::api::simple::scan_ballots(id_account as u32, &context.0).await?;
         Ok(true)
     }
 
     async fn decode_ballots(election_seed: String, context: &GQLContext) -> FieldResult<bool> {
-        zcvlib::api::simple::decode_ballots(election_seed, &context.0).await?;
+        crate::api::simple::decode_ballots(election_seed, &context.0).await?;
         Ok(true)
     }
 
     async fn collect_results(context: &GQLContext) -> FieldResult<Vec<VoteResultItem>> {
-        let res = zcvlib::api::simple::collect_results(&context.0).await?;
+        let res = crate::api::simple::collect_results(&context.0).await?;
         let res: Vec<_> = res
             .into_iter()
             .map(|v| VoteResultItem {
@@ -52,13 +56,13 @@ impl Mutation {
         ctx: &GQLContext,
     ) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
-        zcvlib::api::simple::vote(id_account as u32, vote_content, amount, &ctx.0).await?;
+        crate::api::simple::vote(id_account as u32, vote_content, amount, &ctx.0).await?;
         Ok(true)
     }
 
     async fn mint(id_account: i32, amount: BigDecimal, ctx: &GQLContext) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
-        zcvlib::api::simple::mint(id_account as u32, amount, &ctx.0).await?;
+        crate::api::simple::mint(id_account as u32, amount, &ctx.0).await?;
         Ok(true)
     }
 
@@ -70,18 +74,19 @@ impl Mutation {
     ) -> FieldResult<bool> {
         let amount = to_zats(amount)?;
         tracing::info!("delegate {amount}");
-        zcvlib::api::simple::delegate(id_account as u32, &address, amount, &ctx.0).await?;
+        crate::api::simple::delegate(id_account as u32, &address, amount, &ctx.0).await?;
         Ok(true)
     }
 
     async fn import_election(id_account: i32, url: String, ctx: &GQLContext) -> FieldResult<bool> {
         let id_account = id_account as u32;
-        zcvlib::api::simple::import_election(id_account, &url, &ctx.0).await?;
-        zcvlib::api::simple::import_account(id_account, &ctx.0).await?;
+        crate::api::simple::import_election(id_account, &url, &ctx.0).await?;
+        crate::api::simple::import_account(id_account, &ctx.0).await?;
         Ok(true)
     }
 }
 
+#[cfg(feature = "graphql")]
 #[derive(GraphQLObject)]
 pub struct VoteResultItem {
     pub idx_question: i32,

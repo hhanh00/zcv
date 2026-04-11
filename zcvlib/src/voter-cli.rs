@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use crate::voter::{GQLContext, mutation::Mutation, query::Query};
+use zcvlib::voter::{GQLContext, mutation::Mutation, query::Query};
 use anyhow::Result;
 use clap::Parser;
 use juniper::{EmptySubscription, RootNode};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 use zcvlib::context::Context;
-
-pub mod voter;
 
 type Schema = RootNode<Query, Mutation, EmptySubscription<GQLContext>>;
 
