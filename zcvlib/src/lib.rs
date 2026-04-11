@@ -9,21 +9,23 @@ pub mod pir;
 pub mod balance;
 pub mod ballot;
 pub mod vote;
-pub mod server;
 pub mod api;
-// pub mod frb_generated;
 
+#[cfg(feature = "graphql")]
+pub mod voter;
+
+#[cfg(feature = "server")]
+pub mod server;
+
+#[cfg(any(feature = "client", feature = "server"))]
 #[path = "cash.z.wallet.sdk.rpc.rs"]
 pub mod rpc;
-// pub mod rpc {
-//     tonic::include_proto!("cash.z.wallet.sdk.rpc");
-// }
 
+#[cfg(any(feature = "client", feature = "server"))]
 #[path = "cash.z.vote.sdk.rpc.rs"]
 pub mod vote_rpc;
-// pub mod vote_rpc {
-//     tonic::include_proto!("cash.z.vote.sdk.rpc");
-// }
+
+// pub mod frb_generated;
 
 pub use error::ZCVResult;
 pub use error::Error as ZCVError;
