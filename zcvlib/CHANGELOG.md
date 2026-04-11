@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.7.0...zcvlib-v0.8.0) (2026-04-11)
+
+
+### Features
+
+* add check_witnesses that verifies that we have enough witness data ([#204](https://github.com/hhanh00/zcv/issues/204)) ([55a399d](https://github.com/hhanh00/zcv/commit/55a399d38c6e481fdfa84a03e68cea6cd8236eb5))
+
+
+### Bug Fixes
+
+* remove old dependency orchard/vote, migrate to orchard-vote ([#203](https://github.com/hhanh00/zcv/issues/203)) ([ae0abf4](https://github.com/hhanh00/zcv/commit/ae0abf4a2203147e16a23b7a99ae5141d7244ceb))
+
+
+### Chores
+
+* split server/client/counter/voter into features ([#206](https://github.com/hhanh00/zcv/issues/206)) ([83b4506](https://github.com/hhanh00/zcv/commit/83b450682c87efeefb5b923dc41946a37724b577))
+* use refactored orchard vote crates ([#200](https://github.com/hhanh00/zcv/issues/200)) ([5f731ba](https://github.com/hhanh00/zcv/commit/5f731ba492904d0f00dfa60f41e12b313c4a7b7a))
+* use zcash-trees standalone repo ([#202](https://github.com/hhanh00/zcv/issues/202)) ([a9024ac](https://github.com/hhanh00/zcv/commit/a9024acd18f84a95bc872bef44877b5ee6a4349a))
+
 ## [0.7.0](https://github.com/hhanh00/zcv/compare/zcvlib-v0.6.0...zcvlib-v0.7.0) (2026-04-06)
 
 
