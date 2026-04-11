@@ -9,14 +9,17 @@ pub enum Error {
     Duplicate,
     #[error(transparent)]
     Vote(#[from] orchard_vote::VoteError),
+    #[cfg(any(feature = "client", feature = "server"))]
     #[error(transparent)]
     Tonic(#[from] tonic::Status),
+    #[cfg(any(feature = "client", feature = "server"))]
     #[error(transparent)]
     TonicTransport(#[from] tonic::transport::Error),
     #[error(transparent)]
     SQLite(#[from] sqlx::Error),
     #[error(transparent)]
     JSON(#[from] serde_json::Error),
+    #[cfg(any(feature = "client", feature = "server"))]
     #[error(transparent)]
     GRPC(#[from] prost::DecodeError),
     #[error(transparent)]

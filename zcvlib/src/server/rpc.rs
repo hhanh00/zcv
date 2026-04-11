@@ -1,12 +1,20 @@
+#[cfg(feature = "server")]
 use std::{pin::Pin, sync::Arc};
 
+#[cfg(feature = "server")]
 use anyhow::Context;
+#[cfg(feature = "server")]
 use prost::Message;
+#[cfg(feature = "server")]
 use sqlx::query_as;
+#[cfg(feature = "server")]
 use tokio::sync::{Mutex, mpsc};
+#[cfg(feature = "server")]
 use tokio_stream::wrappers::ReceiverStream;
+#[cfg(feature = "server")]
 use tonic::{Request, Response, Status, async_trait};
 
+#[cfg(feature = "server")]
 use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
@@ -21,10 +29,12 @@ use crate::{
     },
 };
 
+#[cfg(feature = "server")]
 pub struct ZCVServer {
     pub context: Arc<Mutex<BFTContext>>,
 }
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl VoteStreamer for ZCVServer {
     async fn get_election(&self, _request: Request<Empty>) -> Result<Response<Election>, Status> {
@@ -181,6 +191,7 @@ impl ZCVServer {
     }
 }
 
+#[cfg(feature = "server")]
 pub fn to_tonic(e: anyhow::Error) -> tonic::Status {
     if let Some(status) = e.downcast_ref::<Status>() {
         return status.clone();

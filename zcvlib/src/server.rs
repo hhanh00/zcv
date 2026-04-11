@@ -1,3 +1,4 @@
+#[cfg(feature = "server")]
 use crate::{
     ZCVError, ZCVResult,
     context::BFTContext,
@@ -29,7 +30,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+#[cfg(feature = "server")]
 use tendermint_abci::{Application, ServerBuilder};
+#[cfg(feature = "server")]
 use tendermint_proto::{
     abci::{
         ExecTxResult, RequestCheckTx, RequestFinalizeBlock, RequestInfo, RequestPrepareProposal,
@@ -39,12 +42,16 @@ use tendermint_proto::{
     },
     crypto::{PublicKey, public_key::Sum},
 };
+#[cfg(feature = "server")]
 use tokio::{runtime::Runtime, sync::Mutex};
 
+#[cfg(feature = "server")]
 pub mod rpc;
 
+#[cfg(feature = "server")]
 pub type RPCResult<T> = Result<T, String>;
 
+#[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct Server {
     state: Arc<Mutex<ServerState>>,
