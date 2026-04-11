@@ -1,5 +1,5 @@
-pir: "http://eth:3000"
-end: 3240000
+pir: "https://vote.methyl.cc"
+end: 3300000
 need_sig: true
 name: NU7 Sentiment Poll
 caption: "What is your general sentiment toward including the following protocol features?"
