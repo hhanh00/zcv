@@ -61,7 +61,7 @@ warp = {version = "0.4", features = ["server", "websocket"]}
 
 [workspace.dependencies.zcash-trees]
 git = "https://github.com/hhanh00/zcash-trees"
-rev = "59aed0867b4923437b725a9ded365e458a823d8a"
+rev = "79bcf5b2a374a599bd51f1839306868e9ce4ea5e"
 features = ["imt"]
 
 [workspace.dependencies.orchard-vote]
