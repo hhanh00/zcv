@@ -1,0 +1,51 @@
+# Schema for election configuration YAML
+# This schema defines the structure for election configuration files
+
+type: object
+required:
+  - pir
+  - end
+  - need_sig
+  - name
+  - caption
+  - questions
+properties:
+  pir:
+    type: string
+    format: uri
+    description: URL of the PIR (Private Information Retrieval) server
+  end:
+    type: integer
+    minimum: 0
+    description: Snapshot block height
+  need_sig:
+    type: boolean
+    description: Whether a signature is required for voting
+  name:
+    type: string
+    minLength: 1
+    description: Short name/identifier for the election
+  caption:
+    type: string
+    minLength: 1
+    description: Human-readable description of the election
+  questions:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - title
+        - answers
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: The question text
+        answers:
+          type: array
+          minItems: 2
+          items:
+            type: string
+            minLength: 1
+          description: Available answer choices for the question
