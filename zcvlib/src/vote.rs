@@ -118,7 +118,7 @@ pub async fn send_vote(
         recipient,
         amount,
         memo,
-        &notes_with_witnesses,
+        &notes_with_witnesses[..],
         nf_root,
         cmx_root,
         OsRng,
