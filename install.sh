@@ -2,6 +2,8 @@
 
 # Requirements: pkill, curl, go, jq, grpcurl
 
+BIN_DIR=./zcv
+
 # --- Usage ---
 usage() {
   echo "Usage: $(basename "$0") <command> [options]"
@@ -22,133 +24,145 @@ usage() {
   exit 1
 }
 
-# --- Require at least one argument ---
-if [[ $# -lt 1 ]]; then
-  echo "Error: a command is required." >&2
-  usage
-fi
+# --- Command Functions ---
+download() {
+  echo "Installing binaries..."
+  cp "$(go env GOPATH)/bin/cometbft" zcv/
 
-COMMAND="$1"
-shift
+  curl -L -o zcv/vote-cometbft "https://github.com/hhanh00/zcv/releases/download/zcvlib-v0.6.0/vote-cometbft"
+  curl -L -o zcv/protos/vote.proto "https://raw.githubusercontent.com/hhanh00/zcv/refs/tags/zcvlib-v0.6.0/zcvlib/protos/vote.proto"
+  chmod +x zcv/vote-cometbft
+  $BIN_DIR/cometbft init --home cometbft
+}
 
-# --- Parse named flags ---
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --dir)
-      DIR="$2"; shift 2 ;;
-    --election-json)
-      ELECTION_JSON="$2"; shift 2 ;;
-    --external-ip)
-      EXTERNAL_IP="$2"; shift 2 ;;
-    --seed)
-      SEED="$2"; shift 2 ;;
-    --genesis-url)
-      GENESIS_URL="$2"; shift 2 ;;
+set_node_config() {
+  missing=()
+  [[ -z "$SEED" ]]         && missing+=("--seed")
+  [[ -z "$GENESIS_URL" ]]  && missing+=("--genesis-url")
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Error: missing required flags: ${missing[*]}" >&2
+    usage
+  fi
+
+  curl -L -o cometbft/config/genesis.json "$GENESIS_URL"
+  sed -i -e "s#seeds = \"\"#seeds = \"$SEED\"#" cometbft/config/config.toml
+  sed -i -e "s#external_address = \"\"#external_address = \"$EXTERNAL_IP:26656\"#" cometbft/config/config.toml
+  sed -i -e "s#create_empty_blocks = true#create_empty_blocks = false" cometbft/config/config.toml
+}
+
+coordinate() {
+  echo "Configure as seeder"
+  echo "Upload the $DIR/cometbft/config/genesis.json file to the cloud"
+  echo "The seed URL is"
+  NODEID=$($BIN_DIR/cometbft show-node-id --home cometbft)
+  echo "$NODEID@$EXTERNAL_IP:26656"
+}
+
+set_election() {
+  echo "Configure the election"
+  missing=()
+  [[ -z "$ELECTION_JSON" ]] && missing+=("--election-json")
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Error: missing required flags: ${missing[*]}" >&2
+    usage
+  fi
+
+  ELECTION=$(cat "../$ELECTION_JSON")
+  ELECTION_REQ=$(jq -n --arg election "$ELECTION" '{"election": $election}')
+
+  grpcurl --plaintext --proto zcv/protos/vote.proto -d "$ELECTION_REQ" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
+}
+
+start() {
+  echo "Starting node..."
+  echo "The node will continue to run"
+  echo "Run tail -f $DIR/vote.log to check its status"
+  pkill cometbft
+  nohup $BIN_DIR/cometbft start --home cometbft </dev/null >/dev/null 2>&1 &
+  nohup $BIN_DIR/vote-cometbft </dev/null > vote.log 2>&1 &
+}
+
+promote() {
+  echo "Promoting to validator..."
+  PK=$(cat cometbft/config/priv_validator_key.json | jq .pub_key.value)
+  grpcurl --plaintext --proto zcv/protos/vote.proto -d "{\"pub_key\": $PK, \"power\": \"10\"}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/AddValidator
+}
+
+lock() {
+  echo "Locking..."
+  grpcurl --plaintext --proto zcv/protos/vote.proto -d "{}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/Lock
+}
+
+show_validators() {
+  curl -s localhost:26657/validators | jq .result
+}
+
+unsafe_reset() {
+  pkill cometbft
+  rm vote.db
+  $BIN_DIR/cometbft unsafe-reset-all --home cometbft
+}
+
+# --- Main ---
+main() {
+  # --- Require at least one argument ---
+  if [[ $# -lt 1 ]]; then
+    echo "Error: a command is required." >&2
+    usage
+  fi
+
+  COMMAND="$1"
+  shift
+
+  # --- Parse named flags ---
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dir)
+        DIR="$2"; shift 2 ;;
+      --election-json)
+        ELECTION_JSON="$2"; shift 2 ;;
+      --external-ip)
+        EXTERNAL_IP="$2"; shift 2 ;;
+      --seed)
+        SEED="$2"; shift 2 ;;
+      --genesis-url)
+        GENESIS_URL="$2"; shift 2 ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage ;;
+    esac
+  done
+
+  # --- Validate required flags ---
+  missing=()
+  [[ -z "$DIR" ]]          && missing+=("--dir")
+  [[ -z "$EXTERNAL_IP" ]]  && missing+=("--external-ip")
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Error: missing required flags: ${missing[*]}" >&2
+    usage
+  fi
+
+  mkdir -p "$DIR/zcv/protos"
+  cd "$DIR" || exit 1
+
+  case "$COMMAND" in
+    download)         download ;;
+    set-node-config)  set_node_config ;;
+    coordinate)       coordinate ;;
+    set-election)     set_election ;;
+    start)            start ;;
+    promote)          promote ;;
+    lock)             lock ;;
+    show-validators)  show_validators ;;
+    unsafe-reset)     unsafe_reset ;;
     *)
-      echo "Error: unknown option '$1'" >&2
-      usage ;;
+      echo "Error: unknown command '$COMMAND'" >&2
+      usage
+      ;;
   esac
-done
+}
 
-# --- Validate required flags ---
-missing=()
-[[ -z "$DIR" ]]          && missing+=("--dir")
-[[ -z "$EXTERNAL_IP" ]]  && missing+=("--external-ip")
-
-if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "Error: missing required flags: ${missing[*]}" >&2
-  usage
-fi
-
-#BIN_DIR=$HOME/go/bin
-BIN_DIR=./zcv
-
-mkdir -p $DIR/zcv/protos
-cd $DIR
-
-case "$COMMAND" in
-  download)
-    echo "Installing binaries..."
-    cp "$(go env GOPATH)/bin/cometbft" zcv/
-
-    curl -L -o zcv/vote-cometbft "https://github.com/hhanh00/zcv/releases/download/zcvlib-v0.6.0/vote-cometbft"
-    curl -L -o zcv/protos/vote.proto "https://raw.githubusercontent.com/hhanh00/zcv/refs/tags/zcvlib-v0.6.0/zcvlib/protos/vote.proto"
-    chmod +x zcv/vote-cometbft
-    $BIN_DIR/cometbft init --home cometbft
-    ;;
-
-  set-node-config)
-    missing=()
-    [[ -z "$SEED" ]]         && missing+=("--seed")
-    [[ -z "$GENESIS_URL" ]]  && missing+=("--genesis-url")
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "Error: missing required flags: ${missing[*]}" >&2
-    usage
-    fi
-
-    curl -L -o cometbft/config/genesis.json "$GENESIS_URL"
-    sed -i -e "s#seeds = \"\"#seeds = \"$SEED\"#" cometbft/config/config.toml
-    sed -i -e "s#external_address = \"\"#external_address = \"$EXTERNAL_IP:26656\"#" cometbft/config/config.toml
-    sed -i -e "s#create_empty_blocks = true#create_empty_blocks = false" cometbft/config/config.toml
-    ;;
-
-  coordinate)
-    echo "Configure as seeder"
-    echo "Upload the $DIR/cometbft/config/genesis.json file to the cloud"
-    echo "The seed URL is"
-    NODEID=$($BIN_DIR/cometbft show-node-id --home cometbft)
-    echo "$NODEID@$EXTERNAL_IP:26656"
-    ;;
-
-  set-election)
-    echo "Configure the election"
-    missing=()
-    [[ -z "$ELECTION_JSON" ]] && missing+=("--election-json")
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "Error: missing required flags: ${missing[*]}" >&2
-    usage
-    fi
-
-    ELECTION=$(cat "../$ELECTION_JSON")
-    ELECTION_REQ=$(jq -n --arg election "$ELECTION" '{"election": $election}')
-
-    grpcurl --plaintext --proto zcv/protos/vote.proto -d "$ELECTION_REQ" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/SetElection
-    ;;
-
-  start)
-    echo "Starting node..."
-    echo "The node will continue to run"
-    echo "Run tail -f $DIR/vote.log to check its status"
-    pkill cometbft
-    nohup $BIN_DIR/cometbft start --home cometbft </dev/null >/dev/null 2>&1 &
-    nohup $BIN_DIR/vote-cometbft </dev/null > vote.log 2>&1 &
-    ;;
-
-  promote)
-    echo "Promoting to validator..."
-    PK=$(cat cometbft/config/priv_validator_key.json | jq .pub_key.value)
-    grpcurl --plaintext --proto zcv/protos/vote.proto -d "{\"pub_key\": $PK, \"power\": \"10\"}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/AddValidator
-    ;;
-
-  lock)
-    echo "Locking..."
-    grpcurl --plaintext --proto zcv/protos/vote.proto -d "{}" localhost:9010 cash.z.vote.sdk.rpc.VoteStreamer/Lock
-    ;;
-
-  show-validators)
-    curl -s localhost:26657/validators | jq .result
-    ;;
-
-  unsafe-reset)
-    pkill cometbft
-    rm vote.db
-    $BIN_DIR/cometbft unsafe-reset-all --home cometbft
-    ;;
-
-  *)
-    echo "Error: unknown command '$COMMAND'" >&2
-    usage
-    ;;
-esac
+main "$@"
