@@ -21,3 +21,4 @@ docs/.vuepress/.temp
 *.tgz
 
 node/
+__pycache__/
