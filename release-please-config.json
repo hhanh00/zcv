@@ -1,6 +1,11 @@
 {
   "plugins": ["cargo-workspace"],
   "packages": {
+    ".": {
+      "release-type": "python",
+      "component": "zcv-cli",
+      "changelog-path": "CHANGELOG.md"
+    },
     "zcvlib": {
       "release-type": "rust",
       "changelog-path": "CHANGELOG.md"
